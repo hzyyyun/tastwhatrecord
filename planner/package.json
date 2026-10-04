@@ -1,0 +1,17 @@
+{
+  "name": "student-planner-os",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "planner": "./bin/planner.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "render": "node bin/planner.mjs render",
+    "brief": "node bin/planner.mjs brief --mode chat"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}

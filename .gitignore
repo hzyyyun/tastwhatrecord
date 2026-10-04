@@ -1,0 +1,13 @@
+.env
+.env.*
+*.key
+*.pem
+*.log
+secrets/
+credentials/
+analysis/
+planner/data/
+planner/generated/
+planner/node_modules/
+大学规划台账_v4.md
+Chatbox启动包_v4.md

@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f3f5f7">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icons/icon-192.png">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <title>Student Planner OS</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div id="global-error-banner" class="global-error-banner" hidden>
+      <strong>操作未完成</strong>
+      <span id="global-error-message"></span>
+      <button id="dismiss-global-error" type="button" class="secondary">关闭提示</button>
+    </div>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LOCAL-FIRST MEMORY</p>
+        <h1>Student Planner OS</h1>
+      </div>
+      <div class="topbar-badges">
+        <span class="storage-badge">浏览器本地存储</span>
+        <span id="ai-status" class="storage-badge neutral">AI 未配置</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary" aria-label="数据概览">
+        <article>
+          <span>活动任务</span>
+          <strong id="task-count">0</strong>
+        </article>
+        <article>
+          <span>雷达事项</span>
+          <strong id="radar-count">0</strong>
+        </article>
+        <article>
+          <span>记忆文档</span>
+          <strong id="document-count">0</strong>
+        </article>
+        <article>
+          <span>数据源</span>
+          <strong id="source-count">0</strong>
+        </article>
+      </section>
+
+      <section class="toolbar" aria-label="主要操作">
+        <button id="brief-button" class="primary" type="button">一键调出简报</button>
+        <button id="backup-button" type="button">一键备份</button>
+        <button id="restore-button" type="button">导入备份</button>
+        <button id="chatbox-button" type="button">导入 Chatbox 对话</button>
+        <button id="inbox-button" type="button">收件箱</button>
+        <button id="goals-button" type="button">主线管理</button>
+        <button id="schedule-button" type="button">课表管理</button>
+        <button id="radar-button" type="button">雷达区</button>
+        <button id="lift-button" type="button">抬升日历</button>
+        <button id="ai-settings-button" type="button">AI 与搜索设置</button>
+        <button id="ai-proposal-button" type="button">AI 变更提案</button>
+        <button id="research-button" type="button">研究任务</button>
+        <button id="audit-button" type="button">体检报告</button>
+        <button id="clear-button" class="danger" type="button">清空本地数据</button>
+      </section>
+      <div id="snapshot-status" class="snapshot-status">自动快照：暂无</div>
+
+      <section class="dashboard">
+        <article class="panel">
+          <div class="panel-heading">
+            <h2>今日</h2>
+            <span id="today-count"></span>
+          </div>
+          <ol id="today-list" class="task-list"></ol>
+          <div class="today-schedule">
+            <h3>今日课程</h3>
+            <div id="today-schedule-list"></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <h2>主线树</h2>
+            <span>可自定义</span>
+          </div>
+          <div id="tree-view" class="tree-view"></div>
+        </article>
+
+        <article class="panel wide">
+          <div class="panel-heading">
+            <h2>抬升雷达</h2>
+            <span id="radar-range"></span>
+          </div>
+          <div class="radar-warning-area">
+            <h3>警告 / 红灯区</h3>
+            <div id="radar-warning-list"></div>
+          </div>
+          <h3 class="radar-subheading">未来 90 天</h3>
+          <ul id="radar-list" class="radar-list"></ul>
+        </article>
+      </section>
+
+      <section class="note">
+        <strong>隐私边界</strong>
+        <p>数据只保存在当前浏览器 IndexedDB。AI Key 不进入备份包，不写入代码、日志或页面文件。</p>
+      </section>
+    </main>
+
+    <dialog id="brief-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>Chatbox 只读简报</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <fieldset class="brief-choice">
+          <legend>选择要发送给 Chatbox 的指令</legend>
+          <label><input type="radio" name="brief-choice" value="A" checked> A. 判断今天最该先做的三件事</label>
+          <label><input type="radio" name="brief-choice" value="B"> B. 检查冲突或遗漏</label>
+          <label><input type="radio" name="brief-choice" value="C"> C. 重新规划接下来一周</label>
+          <label><input type="radio" name="brief-choice" value="D"> D. 自定义指令</label>
+          <textarea id="brief-custom-request" placeholder="输入你希望 Chatbox 做什么"></textarea>
+        </fieldset>
+        <div class="dialog-actions">
+          <button id="generate-brief" type="button" class="secondary">生成所选简报</button>
+        </div>
+        <textarea id="brief-text" readonly></textarea>
+        <div class="dialog-actions">
+          <button id="copy-brief" type="button" class="primary" disabled>复制简报</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="audit-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>体检报告</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p class="dialog-copy">仅使用本地规则扫描，不调用 AI。</p>
+        <div id="audit-summary" class="status-line"></div>
+        <div id="audit-list" class="proposal-list"></div>
+      </form>
+    </dialog>
+
+    <dialog id="import-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>导入恢复</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p class="dialog-copy">不会按时间自动覆盖。请为每个数据集选择保留本地或使用备份。</p>
+        <div id="conflict-list" class="conflict-list"></div>
+        <label class="checkbox-row">
+          <input id="restore-settings" type="checkbox" checked>
+          同时恢复脱敏设置
+        </label>
+        <label class="checkbox-row">
+          <input id="restore-documents" type="checkbox" checked>
+          恢复提取出的需求与架构文档
+        </label>
+        <label class="checkbox-row">
+          <input id="restore-attachments" type="checkbox" checked>
+          恢复收件箱附件
+        </label>
+        <div class="dialog-actions">
+          <button id="confirm-import" type="button" class="primary">确认恢复</button>
+          <button value="close" class="secondary">取消</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="chatbox-dialog">
+      <form method="dialog" class="dialog-card chatbox-card">
+        <div class="dialog-heading">
+          <h2>Chatbox 临时提取</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <div class="dialog-scroll-area">
+          <p class="dialog-copy">只解压你选择的一个会话。原文、ZIP 和完整消息不会进入 sources.json。点“生成变更提案”时，预览文本会发送到你配置的 AI 服务。</p>
+          <label class="field">
+            <span>选择会话</span>
+            <select id="chatbox-session"></select>
+          </label>
+          <div id="chatbox-status" class="status-line"></div>
+          <label class="field">
+            <span>需求提取</span>
+            <textarea id="chatbox-requirements"></textarea>
+          </label>
+          <label class="field">
+            <span>架构提取</span>
+            <textarea id="chatbox-architecture"></textarea>
+          </label>
+        </div>
+        <div class="dialog-actions">
+          <button id="extract-session" type="button" class="secondary">提取并预览</button>
+          <button id="generate-chatbox-proposal" type="button" class="secondary" disabled>生成变更提案</button>
+          <button id="simulate-chatbox-proposal" type="button" class="secondary" disabled>模拟变更提案</button>
+          <button id="save-extraction" type="button" class="primary" disabled>确认写入记忆文档</button>
+          <button value="close" class="secondary">取消</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="inbox-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>收件箱</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p class="dialog-copy">支持 PDF、图片、Markdown、TXT 和 JSON。文件只保存在浏览器本地附件库，原始文件会进入备份包。</p>
+        <div class="dialog-actions">
+          <button id="choose-inbox-file" type="button" class="primary">选择文件</button>
+        </div>
+        <label class="field">
+          <span>粘贴任意原始文本资料</span>
+          <textarea id="inbox-paste-text" placeholder="资料先进入收件箱，点击“处理”后再选择用途"></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button id="add-inbox-text" type="button" class="secondary">加入文本</button>
+        </div>
+        <div id="inbox-list" class="proposal-list"></div>
+      </form>
+    </dialog>
+
+    <dialog id="process-source-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>处理收件箱资料</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p id="process-source-title" class="dialog-copy"></p>
+        <label class="field">
+          <span>这是任务、课表、研究需求还是决策？</span>
+          <select id="process-source-type">
+            <option value="task">任务</option>
+            <option value="schedule">课表</option>
+            <option value="research">研究需求</option>
+            <option value="decision">决策</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>关联主线（任务或决策）</span>
+          <select id="process-source-goal"></select>
+        </label>
+        <div class="dialog-actions">
+          <button id="process-source-button" type="button" class="primary">生成变更提案</button>
+          <button id="simulate-source-button" type="button" class="secondary">模拟处理</button>
+          <button value="close" class="secondary">取消</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="lift-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>抬升日历</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p class="dialog-copy">按“截止日 - 前置准备期”排序。点击任务可以修改状态。</p>
+        <div id="lift-list" class="proposal-list"></div>
+      </form>
+    </dialog>
+
+    <dialog id="task-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>任务详情</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <input id="task-dialog-id" type="hidden">
+        <div class="form-grid">
+          <label class="field">
+            <span>标题</span>
+            <input id="task-dialog-title" type="text">
+          </label>
+          <label class="field">
+            <span>状态</span>
+            <select id="task-dialog-status">
+              <option value="todo">待办</option>
+              <option value="in_progress">进行中</option>
+              <option value="blocked">受阻</option>
+              <option value="done">已完成</option>
+              <option value="active">持续进行</option>
+              <option value="cancelled">归档</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>优先级</span>
+            <input id="task-dialog-priority" type="text">
+          </label>
+          <label class="field">
+            <span>截止时间</span>
+            <input id="task-dialog-due" type="text" placeholder="ISO 时间">
+          </label>
+          <label class="field">
+            <span>复核时间</span>
+            <input id="task-dialog-review" type="text" placeholder="ISO 时间">
+          </label>
+          <label class="field">
+            <span>前置准备天数</span>
+            <input id="task-dialog-preparation" type="text">
+          </label>
+        </div>
+        <label class="field">
+          <span>验收标准</span>
+          <textarea id="task-dialog-acceptance"></textarea>
+        </label>
+        <label class="field">
+          <span>阻塞复活条件</span>
+            <input id="task-dialog-unblock" type="text" placeholder="例如：等待老师回复后复活">
+        </label>
+        <div class="dialog-actions">
+          <button id="save-task-detail" type="button" class="primary">保存任务</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="ai-settings-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>AI 与搜索设置</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p class="dialog-copy">API Key 仅由你手动输入，并使用本机口令加密保存在 IndexedDB。Key 不进入备份包，不发送给 GitHub。</p>
+        <div class="form-grid">
+          <label class="field">
+            <span>OpenAI 兼容 baseURL</span>
+            <input id="ai-base-url" type="url" placeholder="https://api.example.com/v1" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>模型名称</span>
+            <input id="ai-model" type="text" placeholder="model-name" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>AI API Key</span>
+            <input id="ai-api-key" type="password" autocomplete="new-password">
+          </label>
+          <label class="field">
+            <span>Tavily API Key</span>
+            <input id="tavily-api-key" type="password" autocomplete="new-password">
+          </label>
+          <label class="field">
+            <span>本地加密口令</span>
+            <input id="vault-passphrase" type="password" autocomplete="new-password">
+          </label>
+          <label class="field">
+            <span>再次输入口令</span>
+            <input id="vault-passphrase-confirm" type="password" autocomplete="new-password">
+          </label>
+        </div>
+        <div id="ai-settings-status" class="status-line"></div>
+        <div id="data-health-report" class="health-report"></div>
+        <div class="dialog-actions">
+          <button id="save-ai-settings" type="button" class="primary">加密保存并解锁</button>
+          <button id="unlock-ai-settings" type="button" class="secondary">使用口令解锁</button>
+          <button id="lock-ai-settings" type="button" class="secondary">锁定</button>
+          <button id="data-health-button" type="button" class="secondary">数据健康度检查</button>
+          <button id="validation-simulation-button" type="button" class="secondary">运行 Zod 拦截模拟</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="goals-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>主线管理</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p class="dialog-copy">Q0-Q5 仅是初始示例。可以新建、改名、调整顺序、修改权重或删除主线。</p>
+        <div class="form-grid">
+          <label class="field">
+            <span>主线 ID 或前缀</span>
+            <input id="goal-new-prefix" type="text" value="Q">
+          </label>
+          <label class="field">
+            <span>主线名称</span>
+            <input id="goal-new-title" type="text" placeholder="例如：科研与作品集">
+          </label>
+          <label class="field">
+            <span>战略权重（1-10）</span>
+            <input id="goal-new-weight" type="text" value="5">
+          </label>
+        </div>
+        <div class="dialog-actions">
+          <button id="add-goal-button" type="button" class="primary">新建主线</button>
+        </div>
+        <div id="goals-list" class="proposal-list"></div>
+      </form>
+    </dialog>
+
+    <dialog id="delete-goal-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>删除主线</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p id="delete-goal-message" class="dialog-copy"></p>
+        <label class="field">
+          <span>转移任务到</span>
+          <select id="delete-goal-transfer-target"></select>
+        </label>
+        <div class="dialog-actions">
+          <button id="delete-goal-transfer" type="button" class="primary">转移任务并删除</button>
+          <button id="delete-goal-cascade" type="button" class="danger">一并删除任务</button>
+          <button value="close" class="secondary">取消</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="schedule-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>课表管理</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p class="dialog-copy">课表独立保存在 schedule 对象中，不参与 tasks.json，课表错误不会影响任务树。</p>
+        <div class="dialog-actions">
+          <button id="choose-schedule-image" type="button" class="secondary">从图片识别课表</button>
+          <button id="simulate-schedule-recognition" type="button" class="secondary">模拟图片识别结果</button>
+        </div>
+        <input id="schedule-course-id" type="hidden">
+        <div class="form-grid">
+          <label class="field">
+            <span>星期</span>
+            <select id="schedule-day">
+              <option value="1">周一</option>
+              <option value="2">周二</option>
+              <option value="3">周三</option>
+              <option value="4">周四</option>
+              <option value="5">周五</option>
+              <option value="6">周六</option>
+              <option value="7">周日</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>课程名</span>
+            <input id="schedule-title" type="text">
+          </label>
+          <label class="field">
+            <span>开始节次</span>
+            <input id="schedule-period-start" type="text">
+          </label>
+          <label class="field">
+            <span>结束节次</span>
+            <input id="schedule-period-end" type="text">
+          </label>
+          <label class="field">
+            <span>地点</span>
+            <input id="schedule-location" type="text">
+          </label>
+          <label class="field">
+            <span>教师</span>
+            <input id="schedule-teacher" type="text">
+          </label>
+          <label class="field">
+            <span>开始时间</span>
+            <input id="schedule-start-time" type="text" placeholder="HH:mm">
+          </label>
+          <label class="field">
+            <span>结束时间</span>
+            <input id="schedule-end-time" type="text" placeholder="HH:mm">
+          </label>
+          <label class="field">
+            <span>周次范围</span>
+            <input id="schedule-week-range" type="text" placeholder="例如 1-16 周">
+          </label>
+        </div>
+        <div class="dialog-actions">
+          <button id="save-course" type="button" class="primary">保存课程</button>
+          <button id="reset-course-form" type="button" class="secondary">清空表单</button>
+        </div>
+        <div id="schedule-list" class="proposal-list"></div>
+      </form>
+    </dialog>
+
+    <dialog id="proposal-dialog">
+      <form method="dialog" class="dialog-card chatbox-card">
+        <div class="dialog-heading">
+          <h2>AI 变更提案</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p class="dialog-copy">AI 只生成建议。勾选后点击确认，系统才会写入。</p>
+        <label class="field">
+          <span>分析要求</span>
+          <textarea id="proposal-prompt">检查当前任务树，提出最小必要的改进提案。</textarea>
+        </label>
+        <div class="dialog-actions">
+          <button id="generate-proposal" type="button" class="secondary">生成提案</button>
+          <button id="simulate-ai-proposal" type="button" class="secondary">模拟 AI 提案</button>
+        </div>
+        <div id="proposal-summary" class="status-line"></div>
+        <div id="proposal-list" class="proposal-list"></div>
+        <div class="dialog-actions">
+          <button id="apply-proposal" type="button" class="primary" disabled>确认应用所选变更</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="research-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading">
+          <h2>Tavily 研究任务</h2>
+          <button value="close" class="icon-button" aria-label="关闭">关闭</button>
+        </div>
+        <p class="dialog-copy">默认手动触发。系统显示月度配额、今日用量和剩余次数，不做硬性拦截。</p>
+        <label class="field">
+          <span>关联任务（可选）</span>
+          <select id="research-task"></select>
+        </label>
+        <label class="field">
+          <span>关联主线（可选）</span>
+          <select id="research-goal"></select>
+        </label>
+        <label class="field">
+          <span>确认后写入方式</span>
+          <select id="research-output">
+            <option value="record">只保存研究记录</option>
+            <option value="task">创建或关联研究任务</option>
+            <option value="decision">创建决策记录</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>研究问题</span>
+          <input id="research-query" type="text" placeholder="例如：蓝桥杯院校报名流程和截止日期">
+        </label>
+        <div id="research-usage" class="status-line"></div>
+        <div class="dialog-actions">
+          <button id="run-research" type="button" class="primary">确认并调用 Tavily</button>
+          <button id="simulate-research" type="button" class="secondary">模拟研究结果</button>
+        </div>
+        <div id="research-results" class="research-results"></div>
+        <div class="dialog-actions">
+          <button id="save-research" type="button" class="secondary" disabled>生成研究提案</button>
+        </div>
+      </form>
+    </dialog>
+
+    <input id="backup-file" type="file" accept=".zip,application/zip" hidden>
+    <input id="inbox-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.md,.txt,.json" multiple hidden>
+    <input id="schedule-image-file" type="file" accept=".png,.jpg,.jpeg" hidden>
+    <input id="chatbox-file" type="file" accept=".zip,.json,application/zip,application/json" hidden>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./app.mjs"></script>
+  </body>
+</html>

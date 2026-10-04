@@ -1,0 +1,33 @@
+{
+  "sourceId": "SRC-20261003-ABC123",
+  "summary": "一份课程通知，新增了作业平台和截止规则。",
+  "facts": [
+    "高数作业通过学习通提交照片。",
+    "作业有截止时间且不能补交。"
+  ],
+  "tasks": [
+    {
+      "title": "完成高数第一章作业",
+      "parentId": "Q1",
+      "type": "action",
+      "status": "todo",
+      "priority": 1,
+      "impact": 5,
+      "dueAt": "2026-10-05T23:59:59+08:00",
+      "estimateMin": 90,
+      "acceptance": "作业照片已上传，提交状态可查。",
+      "tags": ["math", "homework"]
+    }
+  ],
+  "decisions": [
+    {
+      "title": "是否选择小论文替代平时分小测",
+      "parentId": "Q1",
+      "decisionBy": "2026-10-20T23:59:59+08:00",
+      "earlyReviewAt": "2026-10-10T09:00:00+08:00",
+      "options": ["选择小论文", "选择小测"],
+      "evidenceNeeded": ["两种评分方式的要求", "预计时间成本"]
+    }
+  ]
+}
+

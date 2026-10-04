@@ -1,0 +1,13 @@
+{
+  "timezone": "Asia/Shanghai",
+  "weeklyCapacityHours": 18,
+  "dailyDeepWorkHours": 3,
+  "topTaskCount": 3,
+  "radarDays": 90,
+  "reviewCadence": "weekly-sunday",
+  "defaultReviewDays": 14,
+  "tavilyMonthlyQuota": 1000,
+  "tavilyLowQuotaThreshold": 50,
+  "schemaVersion": 1
+}
+

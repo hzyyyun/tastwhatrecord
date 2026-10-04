@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zod 数据校验模拟</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <div class="panel-heading">
+          <h1>Zod 数据校验模拟</h1>
+        </div>
+        <p class="dialog-copy">此页面会尝试向 IndexedDB 写入错误数据。Zod 拦截成功时，错误数据不会落库。</p>
+        <div id="simulation-results" class="health-report">
+          <p>正在运行...</p>
+        </div>
+        <div class="dialog-actions">
+          <a class="button-link primary" href="./">返回 App</a>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./validation-simulation.mjs"></script>
+  </body>
+</html>
+

@@ -1,0 +1,51 @@
+[
+  {
+    "id": "Q0",
+    "title": "生活底盘",
+    "description": "作息、运动、通勤和生活事务。",
+    "weight": 5,
+    "status": "active",
+    "schemaVersion": 1
+  },
+  {
+    "id": "Q1",
+    "title": "学业与考研",
+    "description": "课程、GPA 与长期升学准备。",
+    "weight": 5,
+    "status": "active",
+    "schemaVersion": 1
+  },
+  {
+    "id": "Q2",
+    "title": "英语体系",
+    "description": "英语能力和语言考试。",
+    "weight": 4,
+    "status": "active",
+    "schemaVersion": 1
+  },
+  {
+    "id": "Q3",
+    "title": "竞赛与证明",
+    "description": "竞赛、项目和成果证明。",
+    "weight": 3,
+    "status": "active",
+    "schemaVersion": 1
+  },
+  {
+    "id": "Q4",
+    "title": "技术成长",
+    "description": "编程、算法、项目和工具系统。",
+    "weight": 4,
+    "status": "active",
+    "schemaVersion": 1
+  },
+  {
+    "id": "Q5",
+    "title": "学位路径",
+    "description": "升学、交换和学位选择。",
+    "weight": 5,
+    "status": "active",
+    "schemaVersion": 1
+  }
+]
+
