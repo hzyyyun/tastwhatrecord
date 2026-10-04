@@ -16,14 +16,15 @@ test("local server serves the web manifest with a manifest MIME type", () => {
   assert.match(server, /\.webmanifest": "application\/manifest\+json/);
 });
 
-test("GitHub Pages workflow removes personal data before upload", () => {
+test("GitHub Pages workflow builds and uploads the static dist directory", () => {
   const workflow = fs.readFileSync(
     new URL("../../.github/workflows/deploy-planner.yml", import.meta.url),
     "utf8"
   );
-  assert.match(workflow, /rm -rf planner\/data planner\/generated/);
+  assert.match(workflow, /npm run build --prefix planner/);
+  assert.match(workflow, /enablement: true/);
   assert.match(workflow, /upload-pages-artifact/);
-  assert.match(workflow, /path: planner/);
+  assert.match(workflow, /path: planner\/dist/);
 });
 
 test("gitignore excludes keys, personal data and analysis", () => {

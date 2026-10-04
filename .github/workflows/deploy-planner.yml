@@ -32,17 +32,18 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefix planner
 
-      - name: Remove personal data from public artifact
-        run: |
-          rm -rf planner/data planner/generated
+      - name: Build static Pages output
+        run: npm run build --prefix planner
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: planner
+          path: planner/dist
 
   deploy:
     environment:
@@ -54,4 +55,3 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
-

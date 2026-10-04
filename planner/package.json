@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "node --test",
+    "build": "node scripts/build-pages.mjs",
     "render": "node bin/planner.mjs render",
     "brief": "node bin/planner.mjs brief --mode chat"
   },
