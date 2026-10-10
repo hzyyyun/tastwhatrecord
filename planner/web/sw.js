@@ -1,3 +1,4 @@
+// Service Worker：缓存应用壳，离线时回退到已缓存页面。
 const CACHE_NAME = "student-planner-os-v1";
 const CORE_ASSETS = [
   "./",
@@ -28,6 +29,7 @@ const CORE_ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
+  // 安装阶段预缓存核心资源，完成后立即激活新版本。
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => cache.addAll(CORE_ASSETS))
@@ -36,6 +38,7 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
+  // 清理旧缓存，避免不同应用版本混用。
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
@@ -44,6 +47,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  // 只处理同源 GET；网络优先更新缓存，离线时使用最近一次缓存。
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
@@ -62,4 +66,3 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
-

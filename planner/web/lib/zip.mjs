@@ -1,3 +1,4 @@
+// 轻量 ZIP 读写器：支持浏览器原生 deflate-raw，不依赖第三方压缩库。
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const EOCD_SIGNATURE = 0x06054b50;
@@ -5,6 +6,7 @@ const CENTRAL_SIGNATURE = 0x02014b50;
 const LOCAL_SIGNATURE = 0x04034b50;
 
 const CRC_TABLE = (() => {
+  // 预计算 CRC32 查表，写入 ZIP 时为每个条目生成校验值。
   const table = new Uint32Array(256);
   for (let i = 0; i < 256; i += 1) {
     let value = i;
@@ -17,6 +19,7 @@ const CRC_TABLE = (() => {
 })();
 
 function crc32(data) {
+  // 返回无符号 32 位 CRC，供 ZIP 本地头和中央目录使用。
   let value = 0xffffffff;
   for (const byte of data) {
     value = CRC_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8);
@@ -25,6 +28,7 @@ function crc32(data) {
 }
 
 function dosDateTime(date = new Date()) {
+  // ZIP 使用 DOS 时间格式，年份不得早于 1980。
   const year = Math.max(1980, date.getFullYear());
   const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
   const day = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
@@ -51,6 +55,7 @@ function concat(parts) {
 }
 
 async function deflateRaw(data) {
+  // 浏览器不支持压缩时回退到 stored 模式，而不是让导出失败。
   if (typeof CompressionStream === "undefined") return null;
   try {
     const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
@@ -61,6 +66,7 @@ async function deflateRaw(data) {
 }
 
 async function inflateRaw(data) {
+  // 解压依赖 DecompressionStream；旧浏览器会收到明确升级提示。
   if (typeof DecompressionStream === "undefined") {
     throw new Error("当前浏览器不支持解压 ZIP，请升级 Chrome 或 Edge。");
   }
@@ -69,6 +75,7 @@ async function inflateRaw(data) {
 }
 
 export async function writeZip(entries, options = {}) {
+  // 先写所有本地文件头和数据，再写中央目录与 EOCD。
   const compress = options.compress !== false;
   const { time, date } = dosDateTime(options.date);
   const localParts = [];
@@ -147,6 +154,7 @@ export async function writeZip(entries, options = {}) {
 }
 
 async function toArrayBuffer(source) {
+  // 统一接受 ArrayBuffer、TypedArray 和 Blob 三种输入来源。
   if (source instanceof ArrayBuffer) return source;
   if (ArrayBuffer.isView(source)) return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
   if (source instanceof Blob) return source.arrayBuffer();
@@ -154,6 +162,7 @@ async function toArrayBuffer(source) {
 }
 
 function findEndOfCentralDirectory(view) {
+  // EOCD 最多位于文件末尾 65557 字节范围内（含最大注释长度）。
   const min = Math.max(0, view.byteLength - 65_557);
   for (let offset = view.byteLength - 22; offset >= min; offset -= 1) {
     if (view.getUint32(offset, true) === EOCD_SIGNATURE) return offset;
@@ -162,6 +171,7 @@ function findEndOfCentralDirectory(view) {
 }
 
 export async function readZip(source, options = {}) {
+  // include 回调让调用方在解压前即可跳过未选中的 ZIP 条目。
   const include = options.include ?? (() => true);
   const buffer = await toArrayBuffer(source);
   const view = new DataView(buffer);

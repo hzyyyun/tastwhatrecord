@@ -158,6 +158,27 @@ test("proposal preview and apply do not mutate until selected", () => {
   assert.equal(state.tasks[0].title, "old");
 });
 
+test("proposal update cannot move a task under a missing mainline", () => {
+  const state = {
+    config: {},
+    goals: [{ id: "Q1", title: "study" }],
+    tasks: [{ id: "T1", parentId: "Q1", title: "task", status: "todo" }],
+    sources: [],
+    decisions: []
+  };
+  const previews = previewProposal(state, {
+    summary: "",
+    operations: [{
+      op: "update_task",
+      id: "T1",
+      changes: { parentId: "Q9" },
+      reason: "bad move"
+    }]
+  });
+  assert.equal(previews[0].valid, false);
+  assert.match(previews[0].error, /主线不存在/);
+});
+
 test("schedule proposal writes only to the isolated schedule dataset", () => {
   const state = {
     config: {},

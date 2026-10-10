@@ -1,3 +1,4 @@
+// 浏览器内校验模拟：尝试写入非法数据，验证 Zod 会在持久化前拦截。
 import {
   loadState,
   openDatabase,
@@ -7,6 +8,7 @@ import {
 import { normalizeState } from "../src/schema.mjs";
 
 async function run() {
+  // 模拟只报告结果，不把测试数据保留到正常数据集中。
   const output = document.querySelector("#simulation-results");
   const db = await openDatabase();
   const current = await loadState(db);
@@ -54,4 +56,3 @@ run().catch((error) => {
   document.querySelector("#simulation-results").innerHTML =
     `<div class="unhealthy">模拟运行失败：${error.message}</div>`;
 });
-

@@ -1,11 +1,14 @@
+// 本地静态服务器：只绑定回环地址，提供 PWA 资源并阻止目录穿越。
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+// 优先使用环境变量指定端口，方便本机已有服务占位时切换。
 const preferredPort = Number(process.env.PLANNER_PORT || 4173);
 
+// 只登记前端实际使用的类型；未知类型按二进制下发。
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -21,6 +24,7 @@ const mimeTypes = {
 };
 
 function safePath(urlPath) {
+  // 将 URL 路径映射到项目目录内，任何越界路径都返回 null 并由调用方拒绝。
   const pathname = decodeURIComponent(urlPath.split("?")[0]);
   const relative = pathname === "/" ? "/web/index.html" : pathname;
   const target = path.resolve(root, `.${relative}`);
@@ -29,6 +33,7 @@ function safePath(urlPath) {
 }
 
 function createServer() {
+  // 根路径和 /web 都跳转到带尾斜杠的静态入口。
   return http.createServer((request, response) => {
     const pathname = decodeURIComponent((request.url || "/").split("?")[0]);
     if (pathname === "/" || pathname === "/web") {
@@ -46,6 +51,7 @@ function createServer() {
       return;
     }
     if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+      // 目录请求自动寻找 index.html，支持直接访问 /web/。
       target = path.join(target, "index.html");
     }
     if (!fs.existsSync(target)) {
@@ -61,6 +67,7 @@ function createServer() {
 }
 
 function listen(port, attemptsLeft = 10) {
+  // 端口被占用时尝试下一个端口，最多十次，避免启动直接失败。
   const server = createServer();
   server.once("error", (error) => {
     if (error.code === "EADDRINUSE" && attemptsLeft > 0) {

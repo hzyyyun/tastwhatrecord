@@ -1,3 +1,4 @@
+// 渲染层：把规范化状态转换为四个可读的 Markdown 快照。
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -18,6 +19,7 @@ import {
 } from "./engine.mjs";
 
 function formatDate(value) {
+  // 统一使用上海时区输出，避免不同机器本地时区导致日期漂移。
   if (!value) return "未设";
   return new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
@@ -30,6 +32,7 @@ function formatDate(value) {
 }
 
 function taskTable(tasks) {
+  // 表格保留最常用的排序依据和验收标准，方便直接复制到对话。
   if (!tasks.length) return "无";
   const rows = [
     "| ID | 主线 | 状态 | 任务 | 抬升 | 截止 | 验收 |",
@@ -42,6 +45,7 @@ function taskTable(tasks) {
 }
 
 export function renderAll(now = new Date()) {
+  // 每次渲染都重新读取状态，确保生成文件不带进程内缓存。
   const state = loadState();
   const top = topTasks(state, now);
   const radar = radarItems(state, now);
@@ -51,6 +55,7 @@ export function renderAll(now = new Date()) {
   const habits = state.tasks.filter((task) => task.type === "habit" && task.status === "active");
 
   const current = [
+    // CURRENT_STATE 是完整运行快照，供人工快速核对系统判断。
     "# Planner OS Current State",
     "",
     `生成时间：${formatDate(now)}`,
@@ -77,6 +82,7 @@ export function renderAll(now = new Date()) {
   ].join("\n");
 
   const today = [
+    // TODAY 只保留当天行动和最低可行线，降低执行时的信息负担。
     "# Today",
     "",
     `日期：${formatDate(now)}`,
@@ -91,6 +97,7 @@ export function renderAll(now = new Date()) {
   ].join("\n");
 
   const radarDoc = [
+    // RADAR 重点展示抬升、复核、截止三个时间锚点。
     "# Radar",
     "",
     `生成时间：${formatDate(now)}`,
@@ -100,6 +107,7 @@ export function renderAll(now = new Date()) {
 
   const brief = compactBrief(state, now);
 
+  // 生成文件全部由本函数重建，不反向读取或修改，避免循环依赖。
   writeGenerated("CURRENT_STATE.md", `${current}\n`);
   writeGenerated("TODAY.md", `${today}\n`);
   writeGenerated("RADAR.md", `${radarDoc}\n`);

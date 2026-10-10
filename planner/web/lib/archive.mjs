@@ -1,3 +1,4 @@
+// 备份归档层：生成不含密钥的 ZIP，并在恢复时逐数据集校验和冲突展示。
 import { decodeText, encodeText, readZip, writeZip } from "./zip.mjs";
 import { assertValidSchedule, assertValidState } from "./validation.mjs";
 
@@ -13,6 +14,7 @@ function json(value) {
 }
 
 function sanitizeSettings(settings = {}) {
+  // 设置恢复只保留非敏感键；密钥类键名无论值为何都直接丢弃。
   const safe = {};
   for (const [key, value] of Object.entries(settings)) {
     if (SECRET_KEY_PATTERN.test(key)) continue;
@@ -22,6 +24,7 @@ function sanitizeSettings(settings = {}) {
 }
 
 export async function createBackupArchive(options) {
+  // 状态和课表先通过 Zod，再写入归档，避免导出已知损坏数据。
   const {
     state,
     settings = {},
@@ -57,6 +60,7 @@ export async function createBackupArchive(options) {
   }
 
   const manifest = {
+    // manifest 只列文件名和版本，不包含任何凭据。
     format: BACKUP_FORMAT,
     formatVersion: BACKUP_FORMAT_VERSION,
     schemaVersion: state.config.schemaVersion ?? 1,
@@ -77,6 +81,7 @@ export async function createBackupArchive(options) {
 }
 
 function parseJsonEntry(entries, name, required = true) {
+  // 缺失可选文件返回 null；必需文件缺失则拒绝导入。
   const data = entries.get(name);
   if (!data) {
     if (required) throw new Error(`备份缺少文件：${name}`);
@@ -90,6 +95,7 @@ function parseJsonEntry(entries, name, required = true) {
 }
 
 export async function parseBackupArchive(source) {
+  // 只接受本应用格式，且拒绝高于当前格式版本的备份。
   const entries = source instanceof Map ? source : await readZip(source);
   const manifest = parseJsonEntry(entries, "manifest.json");
   if (manifest.format !== BACKUP_FORMAT) {
@@ -107,6 +113,7 @@ export async function parseBackupArchive(source) {
   const schedule = parseJsonEntry(entries, "data/schedule.json", false) ?? [];
   const stateValidation = assertValidState(state);
   const scheduleValidation = assertValidSchedule(schedule);
+  // 文档和附件只读取约定目录，避免恢复任意 ZIP 内容。
   const settings = sanitizeSettings(rawSettings);
   const briefData = entries.get("briefs/CHATBOX_BRIEF.md");
   const documents = [];
@@ -133,6 +140,7 @@ export async function parseBackupArchive(source) {
 }
 
 export function detectDatasetConflicts(localState, incomingState) {
+  // 冲突报告只比较数据集摘要，不替用户决定覆盖策略。
   return [...DATASETS, "schedule"].map((name) => {
     const localValue = localState[name];
     const incomingValue = incomingState[name];

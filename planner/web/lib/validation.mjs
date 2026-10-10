@@ -1,5 +1,7 @@
+// 数据校验层：Zod 负责结构约束，健康检查负责把结果汇总到界面。
 import { z } from "../../node_modules/zod/index.js";
 
+// nullable 字符串既允许 null，也允许可解析的日期字符串。
 const dateString = z.string()
   .refine((value) => !Number.isNaN(new Date(value).getTime()), "日期格式无效")
   .nullable()
@@ -13,6 +15,7 @@ const goalId = z.string()
   .regex(/^[A-Za-z0-9_-]+$/, "主线 ID 只能包含字母、数字、下划线和连字符");
 
 export const configSchema = z.object({
+  // passthrough 保留未来新增字段，保证 v1 数据向后兼容。
   timezone: z.string().min(1).default("Asia/Shanghai"),
   weeklyCapacityHours: z.number().positive().default(18),
   dailyDeepWorkHours: z.number().positive().default(3),
@@ -35,6 +38,7 @@ export const goalSchema = z.object({
 }).passthrough();
 
 export const taskSchema = z.object({
+  // 任务必须有真实 ID 和主线归属，状态与类型使用固定枚举。
   id: z.string().min(1),
   parentId: goalId,
   parentTaskId: z.string().nullable().default(null),
@@ -108,6 +112,7 @@ export const decisionSchema = z.object({
 }).passthrough();
 
 export const courseSchema = z.object({
+  // 课表以节次为主，开始/结束时间用于展示和冲突辅助判断。
   id: z.string().min(1),
   dayOfWeek: z.number().int().min(1).max(7),
   periodStart: z.number().int().min(1).max(15),
@@ -155,12 +160,14 @@ export function formatValidationIssues(issues) {
 }
 
 export function validateDataset(name, value) {
+  // 按数据集名称查找对应 schema，未知名称直接暴露配置错误。
   const schema = DATASET_SCHEMAS[name];
   if (!schema) throw new Error(`没有为 ${name} 定义 Zod schema。`);
   return schema.safeParse(value);
 }
 
 export function validateState(state) {
+  // 逐数据集校验并记录问题；失败的数据集会回退为空值而不阻断启动。
   const parsed = {};
   const issues = [];
   const names = ["config", "goals", "tasks", "sources", "decisions"];
@@ -194,6 +201,7 @@ export function validateState(state) {
 }
 
 export function assertValidState(state) {
+  // 写入路径使用断言版本，任何结构问题都在持久化前抛出。
   const result = validateState(state);
   if (!result.success) {
     throw new Error(`数据写入被拒绝：${result.issues.map((issue) => `${issue.dataset}（${issue.message}）`).join("；")}`);
@@ -202,6 +210,7 @@ export function assertValidState(state) {
 }
 
 export function assertValidSchedule(schedule) {
+  // 课表单独断言，便于课表管理界面给出专门的错误信息。
   const result = validateDataset("schedule", schedule);
   if (!result.success) {
     throw new Error(`课表写入被拒绝：${formatValidationIssues(result.error.issues)}`);
@@ -210,6 +219,7 @@ export function assertValidSchedule(schedule) {
 }
 
 export function inspectStateHealth(state, schedule = state.schedule ?? []) {
+  // 返回每个数据集的健康状态，不因一个异常跳过其他数据集检查。
   const reports = [];
   for (const name of ["config", "goals", "tasks", "sources", "decisions"]) {
     const result = validateDataset(name, state[name]);

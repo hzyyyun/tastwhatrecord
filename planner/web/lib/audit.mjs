@@ -1,12 +1,15 @@
+// 本地体检规则：只检查课表硬冲突和临近且尚未排期的任务。
 const ACTIVE_STATUSES = new Set(["todo", "in_progress", "blocked", "active"]);
 
 function periodsOverlap(first, second) {
+  // 同一天且节次区间相交才算硬冲突。
   return first.dayOfWeek === second.dayOfWeek
     && first.periodStart <= second.periodEnd
     && second.periodStart <= first.periodEnd;
 }
 
 export function buildAuditReport(state, schedule = state.schedule ?? [], now = new Date()) {
+  // 两两比较课程，当前数据规模下 O(n^2) 足够简单且可预测。
   const issues = [];
   const courses = Array.isArray(schedule) ? schedule : [];
   for (let firstIndex = 0; firstIndex < courses.length; firstIndex += 1) {
@@ -34,6 +37,7 @@ export function buildAuditReport(state, schedule = state.schedule ?? [], now = n
 }
 
 export function buildRadarWarnings(state, now = new Date()) {
+  // 已安排 scheduledStartAt 的任务不重复进入未排期警告。
   const warnings = [];
   for (const task of state.tasks) {
     if (!ACTIVE_STATUSES.has(task.status) || !task.dueAt || task.scheduledStartAt) continue;
@@ -51,4 +55,3 @@ export function buildRadarWarnings(state, now = new Date()) {
   }
   return warnings.sort((first, second) => first.days - second.days);
 }
-

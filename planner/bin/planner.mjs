@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// CLI 入口：解析命令和参数，调用数据层/引擎/渲染层，不在命令分支中保存业务状态。
 import { parseArgs } from "node:util";
 import { ensureStore, createId, loadState, nowIso, readJson, saveGoals, saveTasks } from "../src/store.mjs";
 import { bucketOf, calculateRaiseAt, compactBrief, issues, markForReplan, radarItems, taskTree, topTasks } from "../src/engine.mjs";
@@ -8,6 +9,7 @@ import { importExtraction, registerSource } from "../src/ingest.mjs";
 import { fetchResearch } from "../src/research.mjs";
 
 function parseValue(value) {
+  // 命令行参数默认都是字符串，仅对布尔和数字做最小转换。
   if (value === "true") return true;
   if (value === "false") return false;
   if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
@@ -20,6 +22,7 @@ function positional(args, index = 0, name = "argument") {
 }
 
 function formatTask(task) {
+  // 终端输出保持单行，便于复制和日志比对。
   return `${task.id} [${task.parentId}/${bucketOf(task)}] ${task.title} | ${task.status} | 抬升 ${calculateRaiseAt(task) ?? "未设"} | 截止 ${task.dueAt ?? "未设"} | ${task.acceptance ?? "未设验收"}`;
 }
 
@@ -28,6 +31,7 @@ function print(value) {
 }
 
 async function main() {
+  // strict=false 允许不同子命令使用各自参数，最终由命令分支决定是否必需。
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     strict: false,
@@ -68,6 +72,7 @@ async function main() {
   const state = () => loadState();
 
   if (command === "help") {
+    // 帮助文本就是 CLI 的能力边界，新增命令时同步维护。
     print([
       "planner commands:",
       "  render",
@@ -104,6 +109,7 @@ async function main() {
   }
 
   if (command === "brief") {
+    // 两种模式当前输出相同内容，保留参数以便后续扩展精简/完整模式。
     const brief = compactBrief(state());
     if (values.mode === "chat") print(brief);
     else print(brief);
@@ -116,6 +122,7 @@ async function main() {
   }
 
   if (command === "tree") {
+    // 主线 -> 一级任务 -> 子任务；更深层级由 engine.taskTree 负责组装。
     const tree = taskTree(state());
     print(tree.map((goal) => {
       const children = goal.tasks.map((task) => {
@@ -128,6 +135,7 @@ async function main() {
   }
 
   if (command === "replan") {
+    // 先把子树标记为 needsReplan，再把规范化后的更新写回原始任务数组。
     const id = positional(positionals, 1, "task-or-goal-id");
     const current = state();
     const updated = markForReplan(current, id, values.reason ?? "上级任务变化");
@@ -141,6 +149,7 @@ async function main() {
   }
 
   if (command === "add-goal") {
+    // 主线 ID 必须唯一，权重由 schema 约束为可排序的战略值。
     const id = values.id ?? positionals[1];
     if (!id || !values.title) throw new Error("add-goal requires --id and --title");
     const goals = readJson("goals");
@@ -158,11 +167,19 @@ async function main() {
   }
 
   if (command === "add-task") {
+    // normalizeTask 会补齐可选字段，避免 CLI 创建出结构不完整的任务。
     if (!values.title) throw new Error("add-task requires --title");
+    const goals = readJson("goals");
+    const parentId = values.parent
+      ?? goals.find((goal) => goal.status === "active")?.id
+      ?? goals[0]?.id;
+    if (!parentId || !goals.some((goal) => goal.id === parentId)) {
+      throw new Error(`Unknown or missing goal: ${parentId ?? "none"}`);
+    }
     const tasks = readJson("tasks");
     const task = normalizeTask({
       id: values.id ?? createId("T"),
-      parentId: values.parent ?? "Q0",
+      parentId,
       title: values.title,
       type: values.type ?? "action",
       status: values.status ?? "todo",
@@ -193,6 +210,7 @@ async function main() {
   }
 
   if (command === "update") {
+    // 只允许白名单字段更新，防止命令行参数意外写入内部字段。
     const id = positional(positionals, 1, "task-id");
     const tasks = readJson("tasks");
     const task = tasks.find((item) => item.id === id);
@@ -218,6 +236,7 @@ async function main() {
   }
 
   if (command === "done") {
+    // 完成动作同时记录 completedAt 和 updatedAt，供巡检判断新鲜度。
     const id = positional(positionals, 1, "task-id");
     const tasks = readJson("tasks");
     const task = tasks.find((item) => item.id === id);

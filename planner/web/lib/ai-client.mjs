@@ -1,4 +1,6 @@
+// OpenAI 兼容客户端：负责解析模型返回的 JSON，并把状态压缩成上下文。
 function stripCodeFence(text) {
+  // 兼容部分网关在 JSON 外包一层 Markdown 代码围栏。
   return String(text)
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -6,6 +8,7 @@ function stripCodeFence(text) {
 }
 
 function parseProposal(content) {
+  // 只接受包含 operations 数组的提案，后续仍由本地预演层二次校验。
   const text = stripCodeFence(content);
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -36,6 +39,7 @@ function parseJsonObject(content, label) {
 }
 
 async function requestChatCompletion(options) {
+  // 所有 AI 请求共用 30 秒超时和统一错误信息，避免各页面重复处理。
   const {
     credentials,
     messages,
@@ -75,6 +79,7 @@ async function requestChatCompletion(options) {
 }
 
 export function buildCompactContext(state, prompt = "") {
+  // 先保留 P0/P1，再补 90 天内任务，最多发送 100 条，控制上下文体积。
   const now = Date.now();
   const horizon = now + 90 * 86_400_000;
   const tasks = state.tasks
@@ -113,6 +118,7 @@ export function buildCompactContext(state, prompt = "") {
 }
 
 export async function generateChangeProposal(options) {
+  // 系统提示明确限制模型只能提出变更，不能声称已经修改数据。
   const {
     credentials,
     state,
@@ -157,6 +163,7 @@ export async function generateChangeProposal(options) {
 }
 
 function schedulePrompt() {
+  // 课表提取使用固定 JSON 结构，无法确认的时间填 null，禁止编造。
   return [
     "请从输入中提取大学课表，只输出 JSON。",
     "结构：{\"courses\":[{\"dayOfWeek\":1,\"periodStart\":1,\"periodEnd\":2,\"title\":\"课程名\",\"location\":\"地点\",\"startTime\":null,\"endTime\":null,\"teacher\":\"\",\"weekRange\":\"\"}]}。",
@@ -166,6 +173,7 @@ function schedulePrompt() {
 }
 
 function scheduleProposalFromCourses(courses, reason, source) {
+  // 将课表解析结果转换为统一变更提案，交由人工确认后写入。
   if (!Array.isArray(courses) || !courses.length) throw new Error("未识别到课程结构。");
   return {
     summary: `识别到 ${courses.length} 门课程，等待人工确认。`,
@@ -178,6 +186,7 @@ function scheduleProposalFromCourses(courses, reason, source) {
 }
 
 export async function extractScheduleFromText(options) {
+  // 文本识别与图片识别共用结构校验和提案生成逻辑。
   const {
     credentials,
     text,
@@ -196,6 +205,7 @@ export async function extractScheduleFromText(options) {
 }
 
 export async function extractScheduleFromImage(options) {
+  // 图片先转 Data URL，再作为 OpenAI 兼容的 image_url 内容发送。
   const {
     credentials,
     file,

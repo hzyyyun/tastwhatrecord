@@ -1,3 +1,4 @@
+// Chatbox 备份解析：只读取选中会话的可见文本，忽略推理内容和未选会话。
 import { decodeText, encodeText, readZip, writeZip } from "./zip.mjs";
 
 const REQUIREMENT_KEYWORDS = /需要|要求|希望|必须|不要|不能|应该|可以|记得|以后|建立|实现|接入|升级|数据|记忆|上下文|token|清单|日程|档案|提醒|调出|任务|架构|联网|搜索|自动|chatbox|codex|app|api/i;
@@ -31,6 +32,7 @@ function parseJson(data, label) {
 }
 
 function visibleText(message) {
+  // contentParts 中只有 text 类型进入提取，reasoning 等私有内容不落盘。
   return (message.contentParts ?? [])
     .filter((part) => part.type === "text" && typeof part.text === "string")
     .map((part) => part.text.trim())
@@ -39,12 +41,14 @@ function visibleText(message) {
 }
 
 function isArchitectureMessage(text) {
+  // 标题命中或架构关键词达到阈值时，视为架构说明消息。
   const headingMatch = /^#{1,4}.*(整体架构|逻辑架构|系统架构|架构全景|六步流水线|五条逻辑链|抬升引擎|误差层|宪法|协作层|调出词)/m.test(text);
   const score = ARCHITECTURE_TERMS.reduce((sum, term) => sum + (text.includes(term) ? 1 : 0), 0);
   return headingMatch || score >= 2;
 }
 
 export async function inspectChatboxZip(source) {
+  // 检查阶段只读取 manifest，不触碰会话正文。
   const entries = await readZip(source, {
     include: (name) => name === "manifest.json"
   });
@@ -68,6 +72,7 @@ export async function inspectChatboxZip(source) {
 }
 
 export async function extractChatboxSession(source, sessionPath) {
+  // 按用户选择的路径只解压一个会话，缩小隐私暴露面。
   const entries = await readZip(source, {
     include: (name) => name === sessionPath
   });
@@ -78,6 +83,7 @@ export async function extractChatboxSession(source, sessionPath) {
 }
 
 function buildExtraction(session, fallbackName) {
+  // 将用户诉求和架构说明分成两个 memory 文档，原文只在内存中临时处理。
   const messages = Array.isArray(session.messages) ? session.messages : [];
   const requirements = [];
   const architecture = [];
@@ -99,7 +105,7 @@ function buildExtraction(session, fallbackName) {
     }
   });
 
-  const header = `# Chatbox 临时提取\n\n- 会话：${session.name ?? sessionPath}\n- 提取时间：${new Date().toISOString()}\n- 原文状态：未保存\n`;
+  const header = `# Chatbox 临时提取\n\n- 会话：${session.name ?? fallbackName}\n- 提取时间：${new Date().toISOString()}\n- 原文状态：未保存\n`;
   const requirementsMarkdown = [
     header,
     "## 历史诉求",
@@ -137,6 +143,7 @@ function buildExtraction(session, fallbackName) {
 }
 
 export async function inspectChatboxJson(file) {
+  // 单会话 JSON 与 ZIP 共用同一个提取结果结构。
   const parsed = JSON.parse(await file.text());
   const session = Array.isArray(parsed) ? parsed[0] : (parsed.session ?? parsed);
   if (!session || !Array.isArray(session.messages)) {
@@ -165,6 +172,7 @@ export async function extractChatboxJson(file) {
 }
 
 export async function createChatboxFixtureZip() {
+  // 测试夹具同时包含有效和无效会话，验证读取范围不会扩大。
   return writeZip([
     {
       name: "manifest.json",

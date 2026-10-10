@@ -91,6 +91,11 @@ Bucket derivation:
 
 `planner/data/schedule.json`: array of course objects stored separately from tasks.
 
+`planner/data/last-import.json`: optional import receipt written by
+`import-extraction`. It contains `sourceId`, `status`, `createdTaskIds`, and
+`createdDecisionCount`; it is generated metadata and is not loaded as application
+state.
+
 | Field | Type | Default |
 |---|---|---|
 | `id` | string | required |

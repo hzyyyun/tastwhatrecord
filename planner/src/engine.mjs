@@ -1,5 +1,7 @@
+// 规划引擎：把任务、目标和时间压力转换成优先级、抬升链和系统告警。
 import { DEFAULT_PREPARATION_DAYS } from "./schema.mjs";
 
+// 数值越高表示越应优先处理；P0 权重最高，其他优先级按梯度下降。
 const PRIORITY_WEIGHT = {
   0: 45,
   1: 35,
@@ -10,6 +12,7 @@ const PRIORITY_WEIGHT = {
 const ACTIVE_STATUSES = new Set(["todo", "in_progress", "active", "blocked"]);
 
 export function daysUntil(value, now = new Date()) {
+  // 返回带小数的天数，便于区分“今天稍后”和“不足一天”。
   if (!value) return null;
   const target = new Date(value);
   if (Number.isNaN(target.getTime())) return null;
@@ -17,6 +20,7 @@ export function daysUntil(value, now = new Date()) {
 }
 
 export function urgencyScore(task, now = new Date()) {
+  // 截止时间越近分数越高，逾期任务直接进入最高压力区间。
   const dueDays = daysUntil(task.dueAt, now);
   const reviewDays = daysUntil(task.reviewAt, now);
 
@@ -34,6 +38,7 @@ export function urgencyScore(task, now = new Date()) {
 }
 
 export function priorityScore(task, goals, now = new Date()) {
+  // 综合战略权重、任务级别、影响、紧迫度和阻塞状态排序。
   const goal = goals.find((item) => item.id === task.parentId);
   const goalWeight = goal?.weight ?? 1;
   const priority = PRIORITY_WEIGHT[task.priority] ?? 10;
@@ -44,15 +49,18 @@ export function priorityScore(task, goals, now = new Date()) {
 }
 
 export function activeTasks(tasks) {
+  // blocked 仍然保留在活动集合中，方便系统持续提醒复活条件。
   return tasks.filter((task) => ACTIVE_STATUSES.has(task.status));
 }
 
 export function preparationDays(task) {
+  // 任务级覆盖优先；没有定制值时按任务类型使用默认准备周期。
   if (Number.isFinite(task.preparationDays)) return Math.max(0, task.preparationDays);
   return DEFAULT_PREPARATION_DAYS[task.type] ?? DEFAULT_PREPARATION_DAYS.action;
 }
 
 export function calculateRaiseAt(task) {
+  // 抬升日是“需要开始处理”的时间点，默认早于截止日若干天。
   if (task.raiseAt) return task.raiseAt;
   if (!task.dueAt) return null;
   const due = new Date(task.dueAt);
@@ -64,6 +72,7 @@ export function calculateRaiseAt(task) {
 }
 
 export function bucketOf(task, now = new Date()) {
+  // A 立即处理，B 等待外部条件，C 阻塞，D 尚未到抬升时间。
   if (task.bucket) return task.bucket;
   if (task.status === "done" || task.status === "cancelled") return "done";
   if (task.status === "blocked") return "C";
@@ -75,22 +84,31 @@ export function bucketOf(task, now = new Date()) {
 }
 
 export function taskTree(state) {
+  // 以主线为根组装任务树；子任务递归展开，并防止坏数据形成死循环。
   const byParent = new Map();
   for (const task of state.tasks) {
     const key = task.parentTaskId ?? task.parentId;
     if (!byParent.has(key)) byParent.set(key, []);
     byParent.get(key).push(task);
   }
+  function buildTaskNode(task, ancestors = new Set()) {
+    if (ancestors.has(task.id)) return { ...task, children: [] };
+    const nextAncestors = new Set(ancestors);
+    nextAncestors.add(task.id);
+    return {
+      ...task,
+      children: (byParent.get(task.id) ?? []).map((child) => buildTaskNode(child, nextAncestors))
+    };
+  }
+
   return state.goals.map((goal) => ({
     ...goal,
-    tasks: (byParent.get(goal.id) ?? []).map((task) => ({
-      ...task,
-      children: byParent.get(task.id) ?? []
-    }))
+    tasks: (byParent.get(goal.id) ?? []).map((task) => buildTaskNode(task))
   }));
 }
 
 export function topTasks(state, now = new Date(), limit = state.config.topTaskCount ?? 3) {
+  // 习惯不进入前三项排名，避免固定动作长期挤占阶段性任务。
   return activeTasks(state.tasks)
     .filter((task) => task.type !== "habit")
     .map((task) => ({ ...task, score: priorityScore(task, state.goals, now) }))
@@ -99,6 +117,7 @@ export function topTasks(state, now = new Date(), limit = state.config.topTaskCo
 }
 
 export function radarItems(state, now = new Date()) {
+  // 雷达同时收集近期任务和仍未关闭的决策，避免决策只留在记录里。
   const days = state.config.radarDays ?? 90;
   const tasks = activeTasks(state.tasks)
     .filter((task) => {
@@ -150,6 +169,7 @@ export function radarItems(state, now = new Date()) {
 }
 
 export function recentOpenTasks(state, now = new Date()) {
+  // 周负荷只估算未来七天到期，以及已经进入复核窗口的活动任务。
   return activeTasks(state.tasks)
     .filter((task) => {
       const due = daysUntil(task.dueAt, now);
@@ -160,6 +180,7 @@ export function recentOpenTasks(state, now = new Date()) {
 }
 
 export function weeklyLoad(state, now = new Date()) {
+  // 负荷率不做硬限制，只作为容量预警输入。
   const estimates = recentOpenTasks(state, now)
     .filter((task) => task.type !== "habit")
     .reduce((sum, task) => sum + (task.estimateMin ?? 0), 0);
@@ -174,6 +195,7 @@ export function weeklyLoad(state, now = new Date()) {
 }
 
 export function issues(state, now = new Date()) {
+  // 巡检规则集中在这里，输出可操作的错误和警告。
   const goalIds = new Set(state.goals.map((goal) => goal.id));
   const taskIds = new Set(state.tasks.map((task) => task.id));
   const taskById = new Map(state.tasks.map((task) => [task.id, task]));
@@ -181,6 +203,7 @@ export function issues(state, now = new Date()) {
   const result = [];
 
   for (const task of active) {
+    // 活动任务必须归属到真实主线，不能只依赖界面隐藏无效数据。
     if (!task.parentId || !goalIds.has(task.parentId)) {
       result.push({
         level: "error",
@@ -240,6 +263,7 @@ export function issues(state, now = new Date()) {
   }
 
   const load = weeklyLoad(state, now);
+  // 超过容量 15% 才提醒，给计划波动保留缓冲。
   if (load.loadRatio > 1.15) {
     result.push({
       level: "warning",
@@ -253,12 +277,14 @@ export function issues(state, now = new Date()) {
 }
 
 function dayBoundary(value) {
+  // 缺失或非法日期视为无穷远，避免误报“子任务晚于父任务”。
   if (!value) return Number.POSITIVE_INFINITY;
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
 }
 
 export function markForReplan(state, rootId, reason = "上级任务变化") {
+  // 以广度优先方式标记整棵影响子树，便于调用方稍后逐项确认。
   const updates = [];
   const childMap = new Map();
   for (const task of state.tasks) {
@@ -270,8 +296,11 @@ export function markForReplan(state, rootId, reason = "上级任务变化") {
     ? [...(childMap.get(rootId) ?? [])]
     : [state.tasks.find((task) => task.id === rootId)].filter(Boolean);
 
+  const visited = new Set();
   while (queue.length) {
     const task = queue.shift();
+    if (visited.has(task.id)) continue;
+    visited.add(task.id);
     task.needsReplan = true;
     task.replanReason = reason;
     task.updatedAt = new Date().toISOString();
@@ -282,6 +311,7 @@ export function markForReplan(state, rootId, reason = "上级任务变化") {
 }
 
 export function compactBrief(state, now = new Date()) {
+  // 生成给对话模型的短简报，优先保留当前行动、风险和重规划信号。
   const today = topTasks(state, now);
   const radar = radarItems(state, now).slice(0, 5);
   const problems = issues(state, now);

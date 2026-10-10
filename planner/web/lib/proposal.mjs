@@ -1,3 +1,4 @@
+// 变更提案层：先在副本上预演 AI 操作，用户确认后才一次性写回状态。
 import {
   normalizeCourse,
   normalizeSchedule,
@@ -7,6 +8,7 @@ import {
 import { assertValidState } from "./validation.mjs";
 
 const ALLOWED_UPDATE_FIELDS = new Set([
+  // 白名单阻止模型修改 schemaVersion、createdAt 等内部字段。
   "title",
   "type",
   "status",
@@ -41,10 +43,12 @@ const ALLOWED_COURSE_FIELDS = new Set([
 
 const TASK_TYPES = new Set(["action", "research", "decision", "milestone", "habit"]);
 function operationId(operation, index) {
+  // 稳定 ID 让前端预览和最终应用可以对应到同一操作。
   return `${operation.op ?? "operation"}-${index}`;
 }
 
 function sanitizeTaskPayload(payload = {}) {
+  // 新建任务必须有标题和主线，其他字段由 normalizeTask 补齐。
   if (!String(payload.parentId ?? "").trim()) throw new Error("新任务必须挂到一条主线。");
   if (!String(payload.title ?? "").trim()) throw new Error("新任务缺少标题。");
   const type = TASK_TYPES.has(payload.type) ? payload.type : "action";
@@ -59,11 +63,16 @@ function sanitizeTaskPayload(payload = {}) {
 }
 
 function applyOne(state, operation) {
+  // 所有操作先在 structuredClone 上执行，避免预览阶段污染当前状态。
   const next = structuredClone(state);
   switch (operation.op) {
     case "create_task": {
       if (!next.goals.some((goal) => goal.id === operation.payload?.parentId)) {
         throw new Error(`主线不存在：${operation.payload?.parentId}`);
+      }
+      if (operation.payload?.parentTaskId
+        && !next.tasks.some((item) => item.id === operation.payload.parentTaskId)) {
+        throw new Error(`上级任务不存在：${operation.payload.parentTaskId}`);
       }
       const task = sanitizeTaskPayload(operation.payload);
       if (next.tasks.some((item) => item.id === task.id)) {
@@ -83,6 +92,21 @@ function applyOne(state, operation) {
       const task = next.tasks.find((item) => item.id === id);
       if (!task) throw new Error(`找不到任务：${id}`);
       const changes = operation.changes ?? operation.payload?.changes ?? {};
+      if (Object.hasOwn(changes, "parentId")
+        && !next.goals.some((goal) => goal.id === changes.parentId)) {
+        throw new Error(`主线不存在：${changes.parentId}`);
+      }
+      if (Object.hasOwn(changes, "parentTaskId") && changes.parentTaskId) {
+        let parentTaskId = changes.parentTaskId;
+        const visited = new Set([task.id]);
+        while (parentTaskId) {
+          if (visited.has(parentTaskId)) throw new Error("任务父子关系不能形成循环。");
+          visited.add(parentTaskId);
+          const parentTask = next.tasks.find((item) => item.id === parentTaskId);
+          if (!parentTask) throw new Error(`上级任务不存在：${parentTaskId}`);
+          parentTaskId = parentTask.parentTaskId;
+        }
+      }
       const before = JSON.stringify(Object.fromEntries(Object.keys(changes).map((key) => [key, task[key]])));
       for (const [key, value] of Object.entries(changes)) {
         if (!ALLOWED_UPDATE_FIELDS.has(key)) continue;
@@ -248,6 +272,7 @@ function applyOne(state, operation) {
 }
 
 export function previewProposal(state, proposal) {
+  // 逐条尝试操作并保留成功/失败结果，失败项不会阻断后续预览。
   const previews = [];
   let working = state;
   proposal.operations.forEach((operation, index) => {
@@ -278,6 +303,7 @@ export function previewProposal(state, proposal) {
 }
 
 export function applySelectedProposal(state, proposal, selectedIndexes) {
+  // 只执行用户勾选的操作，并在结束时再次校验完整状态。
   const selected = new Set(selectedIndexes);
   const normalizedBefore = assertValidState(normalizeState(state));
   let next = normalizedBefore;

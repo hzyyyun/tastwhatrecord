@@ -101,3 +101,17 @@ test("single-session Chatbox JSON can produce an extraction preview", async () =
   assert.equal(extracted.counts.requirements, 1);
   assert.equal(extracted.counts.architecture, 1);
 });
+
+test("Chatbox extraction falls back to the file name when session name is missing", async () => {
+  const file = {
+    name: "unnamed-session.json",
+    text: async () => JSON.stringify({
+      id: "unnamed",
+      messages: [
+        { role: "user", contentParts: [{ type: "text", text: "需要整理任务。" }] }
+      ]
+    })
+  };
+  const extracted = await extractChatboxJson(file);
+  assert.match(extracted.documents[0].content, /unnamed-session\.json/);
+});

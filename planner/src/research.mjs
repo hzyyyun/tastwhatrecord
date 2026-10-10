@@ -1,3 +1,4 @@
+// 基础网页研究模块：抓取页面、保存原文和研究提示，不调用外部 AI。
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -10,6 +11,7 @@ import {
 } from "./store.mjs";
 
 function htmlToText(html) {
+  // 移除脚本和样式后再剥离标签，保留足够给人工复查的正文。
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -23,6 +25,7 @@ function htmlToText(html) {
 }
 
 export async function fetchResearch(options) {
+  // 网络请求必须有超时，避免 CLI 长时间无响应。
   if (!options.url) throw new Error("research requires --url");
   const taskId = options.task;
   const tasks = readJson("tasks");
@@ -42,6 +45,7 @@ export async function fetchResearch(options) {
   if (!response.ok) throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
 
   const html = await response.text();
+  // 控制单次抓取体积，防止超大页面占满本地文件。
   const text = htmlToText(html).slice(0, 40_000);
   const capturedAt = nowIso();
   const sourceId = createId("SRC");
@@ -53,6 +57,7 @@ export async function fetchResearch(options) {
   fs.writeFileSync(textPath, `${text}\n`, "utf8");
 
   const note = [
+    // 研究包同时保存来源、抓取时间和提取约束，供模型/人工继续处理。
     `# Research Pack: ${task?.title ?? options.question ?? "General"}`,
     "",
     `- Task: ${taskId ?? "none"}`,
@@ -74,6 +79,7 @@ export async function fetchResearch(options) {
   fs.writeFileSync(notePath, `${note}\n`, "utf8");
 
   const sources = readJson("sources");
+  // 网页来源登记为待分析资料，并关联到调用方指定任务。
   sources.push({
     id: sourceId,
     title: options.title ?? `Web research: ${options.url}`,
@@ -98,4 +104,3 @@ export async function fetchResearch(options) {
 
   return { sourceId, taskId, researchPack: notePath, sourceText: textPath };
 }
-

@@ -1,3 +1,4 @@
+// 数据 v1 的兼容层：旧数据缺失字段时补默认值，已有字段保持不变。
 export const SCHEMA_VERSION = 1;
 
 export const DEFAULT_CONFIG = {
@@ -26,6 +27,7 @@ const BUCKETS = new Set(["A", "B", "C", "D"]);
 const WEEKDAYS = new Set([1, 2, 3, 4, 5, 6, 7]);
 
 function numberOr(value, fallback) {
+  // 只接受有限数值，避免字符串数字或 NaN 污染排期计算。
   return Number.isFinite(value) ? value : fallback;
 }
 
@@ -58,6 +60,7 @@ export function normalizeGoal(goal = {}) {
 }
 
 export function normalizeTask(task = {}) {
+  // 枚举字段必须先收敛到合法值，再由后续校验层决定是否允许写入。
   const type = TASK_TYPES.has(task.type) ? task.type : "action";
   const status = TASK_STATUSES.has(task.status) ? task.status : "todo";
   const bucket = BUCKETS.has(task.bucket) ? task.bucket : null;
@@ -133,6 +136,7 @@ export function normalizeDecision(decision = {}) {
 }
 
 export function normalizeCourse(course = {}) {
+  // 节次至少保持为 1，且结束节次不得早于开始节次。
   const periodStart = Number.isInteger(course.periodStart) ? course.periodStart : 1;
   const periodEnd = Number.isInteger(course.periodEnd) ? course.periodEnd : periodStart;
   return {
@@ -159,6 +163,7 @@ export function normalizeSchedule(schedule = []) {
 }
 
 export function normalizeState(state = {}) {
+  // 每个数据集都允许旧版本为空或类型异常，但最终统一为可渲染结构。
   return {
     config: normalizeConfig(Array.isArray(state.config) ? {} : state.config),
     goals: (Array.isArray(state.goals) ? state.goals : []).map(normalizeGoal),

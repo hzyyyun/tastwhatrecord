@@ -1,3 +1,4 @@
+// Chatbox 简报生成：把结构化状态压缩成不含 Markdown 代码围栏的对话文本。
 import {
   bucketOf,
   preparationDays,
@@ -8,10 +9,12 @@ import {
 const DEFAULT_TIMEZONE = "Asia/Shanghai";
 
 export function briefLength(text) {
+  // 长度按可见字符计，忽略空白，便于约束简报体量。
   return text.replace(/\s/g, "").length;
 }
 
 export function formatPlannerDate(value) {
+  // 日期统一按上海时区格式化，并显式返回无效输入原文。
   if (!value) return "未设置";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
@@ -30,6 +33,7 @@ export function formatPlannerDate(value) {
 }
 
 function firstItems(items, limit) {
+  // 不修改原数组，只截取前 limit 项。
   const result = [];
   for (const item of items) {
     if (result.length >= limit) break;
@@ -39,6 +43,7 @@ function firstItems(items, limit) {
 }
 
 function taskLine(task, index) {
+  // 每条任务都保留截止、前置准备和当前处理桶。
   return [
     `${index + 1}. ${task.title}`,
     `截止：${formatPlannerDate(task.dueAt)}`,
@@ -58,6 +63,7 @@ function nodeLine(item, index) {
 }
 
 function isTodayOrOverdue(task, timezone) {
+  // 将截止时间和今天都转换为时区日期键，再按天比较。
   if (!task.dueAt) return false;
   const due = new Date(task.dueAt);
   if (Number.isNaN(due.getTime())) return false;
@@ -83,6 +89,7 @@ const REQUEST_OPTIONS = {
 };
 
 export function createChatboxBrief(state, requestOption = "A", customRequest = "") {
+  // 简报只包含当前状态和请求，发送给 Chatbox 后由模型分析，不直接改本地数据。
   const timezone = state.config?.timezone || DEFAULT_TIMEZONE;
   const top = firstItems(topTasks(state), 3);
   const nodes = firstItems(radarItems(state), 5);

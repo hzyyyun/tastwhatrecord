@@ -1,3 +1,4 @@
+// 浏览器主控制器：集中处理界面事件、IndexedDB 状态、AI 提案和导入导出流程。
 import {
   clearLocalData,
   getSetting,
@@ -59,6 +60,7 @@ import {
 } from "./lib/validation.mjs";
 import { buildAuditReport, buildRadarWarnings } from "./lib/audit.mjs";
 
+// 启动时一次性缓存 DOM 引用；元素缺失会在初始化阶段尽早暴露。
 const elements = {
   globalErrorBanner: document.querySelector("#global-error-banner"),
   globalErrorMessage: document.querySelector("#global-error-message"),
@@ -202,6 +204,7 @@ const elements = {
   toast: document.querySelector("#toast")
 };
 
+// 运行期状态：db/state 是核心数据，其余变量保存当前弹窗或异步流程的临时上下文。
 let db;
 let state;
 let documents = [];
@@ -218,6 +221,7 @@ let pendingSourceProcess = null;
 let toastTimer;
 
 function escapeHtml(value) {
+  // 所有插入 innerHTML 的用户数据都必须经过转义，防止 HTML 注入。
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -227,6 +231,7 @@ function escapeHtml(value) {
 }
 
 const STATUS_LABELS = {
+  // 状态只做展示翻译，实际可写值由 Zod schema 约束。
   todo: "待办",
   in_progress: "进行中",
   blocked: "受阻",
@@ -240,6 +245,7 @@ function statusLabel(status) {
 }
 
 function toast(message) {
+  // 短提示只保留一个活动计时器，后一条消息会覆盖前一条。
   elements.toast.textContent = message;
   elements.toast.classList.add("visible");
   clearTimeout(toastTimer);
@@ -247,10 +253,12 @@ function toast(message) {
 }
 
 function activeTasks() {
+  // blocked 仍属于需要持续跟踪的活动任务。
   return state.tasks.filter((task) => ["todo", "in_progress", "blocked", "active"].includes(task.status));
 }
 
 function plannerWeekdayNumber(date = new Date()) {
+  // 将 Intl 返回的英文星期映射为课表使用的 1-7。
   const weekday = new Intl.DateTimeFormat("en-US", {
     timeZone: state.config?.timezone || "Asia/Shanghai",
     weekday: "short"
@@ -259,12 +267,14 @@ function plannerWeekdayNumber(date = new Date()) {
 }
 
 function courseTimeLabel(course) {
+  // 优先显示精确时间；没有时间时退化为节次范围。
   if (course.startTime && course.endTime) return `${course.startTime}-${course.endTime}`;
   if (course.periodStart === course.periodEnd) return `第 ${course.periodStart} 节`;
   return `第 ${course.periodStart}-${course.periodEnd} 节`;
 }
 
 function renderTodaySchedule() {
+  // 只取当前时区的星期，并按开始节次排序。
   const weekday = plannerWeekdayNumber();
   const courses = scheduleCourses
     .filter((course) => course.dayOfWeek === weekday)
@@ -283,6 +293,7 @@ function renderTodaySchedule() {
 }
 
 function taskButton(task, subtitle) {
+  // 任务按钮统一携带 data-task-id，由全局点击代理打开详情。
   return `
     <button class="task-open" type="button" data-task-id="${escapeHtml(task.id)}">
       <strong>${escapeHtml(task.title)}</strong>
@@ -292,6 +303,7 @@ function taskButton(task, subtitle) {
 }
 
 function renderTreeTask(task, level = 0) {
+  // 任务树递归渲染子节点；level 参数用于保留后续扩展缩进样式的入口。
   const children = task.children ?? [];
   return `
     <li>
@@ -302,6 +314,7 @@ function renderTreeTask(task, level = 0) {
 }
 
 function render() {
+  // 所有数据写入完成后统一重绘首页，避免局部视图与内存状态不一致。
   const radar = radarItems(state);
   const radarWarnings = buildRadarWarnings(state);
   const today = topTasks(state);
@@ -354,6 +367,7 @@ function render() {
 }
 
 function download(blob, filename) {
+  // 创建临时对象 URL 触发浏览器下载，随后释放内存。
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -365,12 +379,14 @@ function download(blob, filename) {
 }
 
 function timestampName() {
+  // 文件名使用本地时间，便于用户按下载时间辨认。
   const now = new Date();
   const pad = (value) => String(value).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
 }
 
 async function showBrief() {
+  // 每次打开都回到默认选项并清空上次生成结果。
   elements.briefText.value = "";
   elements.briefCustomRequest.value = "";
   elements.copyBrief.disabled = true;
@@ -380,12 +396,14 @@ async function showBrief() {
 }
 
 function generateSelectedBrief() {
+  // 只根据当前选中项生成文本，不改变任务数据。
   const choice = document.querySelector('input[name="brief-choice"]:checked')?.value ?? "A";
   elements.briefText.value = createChatboxBrief(state, choice, elements.briefCustomRequest.value);
   elements.copyBrief.disabled = false;
 }
 
 async function backup() {
+  // 先构造不含密钥的归档，再更新最后备份时间和内存快照。
   const briefText = createChatboxBrief(state);
   const archiveAttachments = await Promise.all(attachments.map(async (attachment) => ({
     path: attachment.path,
@@ -419,6 +437,7 @@ async function backup() {
 }
 
 async function renderSnapshotStatus() {
+  // 设置页只展示上次自动快照时间，不返回快照中的完整数据。
   const snapshot = await getSetting(db, "autoSnapshot");
   elements.snapshotStatus.textContent = snapshot
     ? `自动快照：${snapshot.createdAt}（第二版启用自动回滚）`
@@ -426,6 +445,7 @@ async function renderSnapshotStatus() {
 }
 
 function renderConflicts(conflicts) {
+  // 每个数据集提供一个“备份/本地”二选一控件，默认使用备份。
   elements.conflictList.innerHTML = conflicts.map((conflict) => {
     const localLabel = conflict.localCount === undefined ? "本地配置" : `本地 ${conflict.localCount} 项`;
     const incomingLabel = conflict.incomingCount === undefined ? "备份配置" : `备份 ${conflict.incomingCount} 项`;
@@ -443,6 +463,7 @@ function renderConflicts(conflicts) {
 }
 
 async function prepareImport(file) {
+  // 导入前先完整解析和校验备份，只有确认后才写入本地。
   if (file.size > MAX_ARCHIVE_BYTES) throw new Error("备份包超过 100 MB 限制。");
   const parsed = await parseBackupArchive(file);
   pendingImport = parsed;
@@ -454,6 +475,7 @@ async function prepareImport(file) {
 }
 
 async function confirmImport() {
+  // 逐数据集应用用户选择，设置/文档/附件再按复选框决定是否恢复。
   if (!pendingImport) return;
   const selections = new Map(
     [...elements.conflictList.querySelectorAll("select[data-dataset]")]
@@ -503,6 +525,7 @@ async function confirmImport() {
   toast("导入恢复完成。");
 }
 
+// 清空是破坏性操作，要求用户输入固定确认词后才能继续。
 async function clearAll() {
   const answer = window.prompt('此操作会清空浏览器中的全部本地数据。请输入“清空”确认：');
   if (answer !== "清空") {
@@ -519,6 +542,7 @@ async function clearAll() {
 }
 
 async function prepareChatbox(file) {
+  // ZIP 与 JSON 都先检查格式和会话列表，提取正文必须由用户主动触发。
   if (file.size > MAX_ARCHIVE_BYTES) throw new Error("Chatbox 备份超过 100 MB 限制。");
   const mode = file.name.toLowerCase().endsWith(".json") ? "json" : "zip";
   const inspection = mode === "json"
@@ -543,6 +567,7 @@ async function prepareChatbox(file) {
 }
 
 async function extractSelectedChatbox() {
+  // 只提取当前选中会话，提取结果暂存在内存中，未主动保存前不落盘。
   if (!pendingChatbox) return;
   const sessionPath = elements.chatboxSession.value;
   const extraction = pendingChatbox.mode === "json"
@@ -558,6 +583,7 @@ async function extractSelectedChatbox() {
 }
 
 async function saveChatboxExtraction() {
+  // 保存的是用户可编辑的提取文档，原始 ZIP 和完整消息不会进入 IndexedDB。
   if (!pendingChatbox?.extraction) return;
   const incoming = [
     {
@@ -581,6 +607,7 @@ async function saveChatboxExtraction() {
 }
 
 async function updateAIStatus() {
+  // 状态栏只反映“已解锁/已配置/未配置”，不展示密钥内容。
   const metadata = await getCredentialVaultMetadata(db);
   if (credentials) {
     elements.aiStatus.textContent = `AI 已解锁：${credentials.model}`;
@@ -595,6 +622,7 @@ async function updateAIStatus() {
 }
 
 async function openAISettings() {
+  // 打开设置时只回填非敏感元数据，密钥与口令输入框始终清空。
   const metadata = await getCredentialVaultMetadata(db);
   elements.dataHealthReport.innerHTML = "";
   elements.aiBaseUrl.value = metadata?.baseURL ?? "";
@@ -610,6 +638,7 @@ async function openAISettings() {
 }
 
 async function saveAISettings() {
+  // 保存时校验两次口令一致，加密后立即解锁当前页面会话。
   const passphrase = elements.vaultPassphrase.value;
   if (passphrase !== elements.vaultPassphraseConfirm.value) {
     throw new Error("两次输入的口令不一致。");
@@ -630,6 +659,7 @@ async function saveAISettings() {
 }
 
 async function unlockAISettings() {
+  // 解锁只在当前内存中持有明文凭据，刷新页面后需要重新输入口令。
   const passphrase = elements.vaultPassphrase.value;
   credentials = await unlockCredentialVault(db, passphrase);
   elements.aiBaseUrl.value = credentials.baseURL;
@@ -644,6 +674,7 @@ async function unlockAISettings() {
 }
 
 async function lockAISettings() {
+  // 主动锁定会清除内存凭据，但保留 IndexedDB 中的密文记录。
   credentials = null;
   elements.aiSettingsStatus.textContent = "保险箱已锁定。";
   await updateAIStatus();
@@ -651,11 +682,13 @@ async function lockAISettings() {
 }
 
 function requireCredentials() {
+  // AI/搜索操作统一要求先解锁，避免各流程各自检查。
   if (!credentials) throw new Error("请先在“AI 与搜索设置”中解锁保险箱。");
   return credentials;
 }
 
 async function openProposalDialog() {
+  // 新打开提案时清除上一次操作上下文，避免误应用旧结果。
   pendingProposal = null;
   elements.proposalSummary.textContent = "";
   elements.proposalList.innerHTML = "";
@@ -664,6 +697,7 @@ async function openProposalDialog() {
 }
 
 function renderProposalPreview(proposal) {
+  // 对每个操作逐条预演，并把基线状态保存下来供确认应用时复用。
   const baseState = normalizeState({ ...state, schedule: scheduleCourses });
   const previews = previewProposal(baseState, proposal);
   pendingProposal = { proposal, previews, baseState };
@@ -687,6 +721,7 @@ function renderProposalPreview(proposal) {
 }
 
 async function generateProposal() {
+  // 生成期间禁用按钮，防止重复请求；返回结果只进入预览。
   const activeCredentials = requireCredentials();
   elements.generateProposal.disabled = true;
   elements.proposalSummary.textContent = "正在生成提案...";
@@ -703,6 +738,7 @@ async function generateProposal() {
 }
 
 async function applyProposalSelection() {
+  // 只应用用户勾选的操作，并分别持久化任务类数据和课表数据。
   if (!pendingProposal) return;
   const selected = [...elements.proposalList.querySelectorAll("input[data-proposal-index]:checked")]
     .map((input) => Number(input.dataset.proposalIndex));
@@ -731,6 +767,7 @@ async function applyProposalSelection() {
 }
 
 function nextReviewTime(task) {
+  // 默认复核日不超过任务截止日，避免给已完成节点安排迟到复查。
   const now = new Date();
   const defaultDays = Number(state.config.defaultReviewDays ?? 14);
   const defaultDate = new Date(now.getTime() + defaultDays * 86_400_000);
@@ -741,6 +778,7 @@ function nextReviewTime(task) {
 }
 
 async function renderResearchUsage() {
+  // 显示上海时区下的日/月用量，超额只提示，不在这里阻止调用。
   const usage = await getSetting(db, "researchUsage");
   const dateKey = getUsageDateKey();
   const monthKey = new Intl.DateTimeFormat("en-CA", {
@@ -768,6 +806,7 @@ async function renderResearchUsage() {
 }
 
 async function openResearchDialog() {
+  // 研究可关联任务或主线，但不强制；输出方式由用户后续确认。
   const tasks = activeTasks().filter((task) => task.type !== "habit");
   elements.researchTask.innerHTML = [
     '<option value="">不关联任务</option>',
@@ -786,6 +825,7 @@ async function openResearchDialog() {
 }
 
 async function runResearch() {
+  // 真实搜索前确认 Tavily Key 已解锁，成功后才增加用量计数。
   const activeCredentials = requireCredentials();
   if (!activeCredentials.tavilyApiKey) {
     throw new Error("请先在设置里填入 Tavily API Key，才能使用联网功能。");
@@ -816,6 +856,7 @@ async function runResearch() {
 }
 
 async function saveResearchRecord() {
+  // 研究结果先生成变更提案，再由统一提案预览流程落盘。
   if (!pendingResearch) return;
   const { taskId, goalId, result, simulated } = pendingResearch;
   const sourceId = `SRC-RESEARCH-${crypto.randomUUID().slice(0, 8)}`;
@@ -884,6 +925,7 @@ async function saveResearchRecord() {
 }
 
 function renderResearchResults(result) {
+  // 结果卡片只做安全转义展示，不在渲染时触发网络请求。
   elements.researchResults.innerHTML = result.records.map((record) => `
     <article class="research-item">
       <h3>${escapeHtml(record.title || "未命名来源")}</h3>
@@ -894,6 +936,7 @@ function renderResearchResults(result) {
 }
 
 function simulateResearch() {
+  // 模拟结果标记 simulated=true，不消耗 Tavily 用量，也明确不是真实来源。
   const query = elements.researchQuery.value.trim();
   if (!query) throw new Error("请输入研究问题。");
   const accessedAt = new Date().toISOString();
@@ -923,10 +966,12 @@ function simulateResearch() {
 }
 
 function safeFileName(name) {
+  // 仅保留字母、数字、点和少量符号，防止路径穿越。
   return String(name).replace(/[^\p{L}\p{N}._-]+/gu, "_");
 }
 
 function renderInbox() {
+  // 最新资料排在最前，提供原文预览和处理入口。
   const sources = [...state.sources].reverse();
   elements.inboxList.innerHTML = sources.length
     ? sources.map((source) => `
@@ -941,11 +986,13 @@ function renderInbox() {
 }
 
 async function openInbox() {
+  // 收件箱是资料处理入口，不自动调用 AI。
   renderInbox();
   elements.inboxDialog.showModal();
 }
 
 async function ingestInboxFiles(fileList) {
+  // 文件先落到附件仓库，再登记 source；文本文件额外生成可检索文档。
   const files = [...fileList];
   if (!files.length) return;
   const newAttachments = [];
@@ -1014,6 +1061,7 @@ async function ingestInboxFiles(fileList) {
 }
 
 async function ingestInboxText() {
+  // 粘贴文本不创建附件，直接作为内存文档和 source 保存。
   const content = elements.inboxPasteText.value.trim();
   if (!content) throw new Error("请先粘贴课表或文字。");
   const id = `SRC-TEXT-${crypto.randomUUID().slice(0, 8)}`;
@@ -1049,6 +1097,7 @@ async function ingestInboxText() {
 }
 
 function openSourceAttachment(path) {
+  // 附件只在用户点击时创建临时 URL，并在一分钟后释放。
   const attachment = attachments.find((item) => item.path === path);
   if (!attachment) throw new Error("附件不存在或尚未恢复。");
   const url = URL.createObjectURL(attachment.blob);
@@ -1057,6 +1106,7 @@ function openSourceAttachment(path) {
 }
 
 function openLiftCalendar() {
+  // 抬升日历按“开始处理时间”排序，空缺时退化为截止时间。
   const active = activeTasks()
     .filter((task) => task.type !== "habit")
     .map((task) => ({ ...task, raiseAt: calculateRaiseAt(task) }))
@@ -1076,6 +1126,7 @@ function openLiftCalendar() {
 }
 
 function openAuditReport() {
+  // 体检完全使用本地规则，不依赖 AI 配置或网络。
   const report = buildAuditReport(state, scheduleCourses);
   elements.auditSummary.textContent = `已检查 ${report.checkedCourses} 门课程：课表硬冲突 ${report.counts.scheduleConflict}。`;
   elements.auditList.innerHTML = report.issues.length
@@ -1093,6 +1144,7 @@ function openAuditReport() {
 }
 
 function openTaskDialog(taskId) {
+  // 详情弹窗回填可编辑字段，任务 ID 保持在隐藏字段中。
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task) throw new Error("任务不存在。");
   elements.taskDialogId.value = task.id;
@@ -1108,6 +1160,7 @@ function openTaskDialog(taskId) {
 }
 
 async function saveTaskDetail() {
+  // 更新前重新规范化状态，非法日期或状态会在写库前被拦截。
   const id = elements.taskDialogId.value;
   const tasks = state.tasks.map((task) => {
     if (task.id !== id) return task;
@@ -1134,6 +1187,7 @@ async function saveTaskDetail() {
 }
 
 async function generateProposalFromChatbox() {
+  // 发送给模型的是截断后的提取预览，完整原始会话不会离开浏览器。
   const activeCredentials = requireCredentials();
   if (!pendingChatbox?.extraction) throw new Error("请先提取 Chatbox 内容。");
   const requirements = elements.chatboxRequirements.value.slice(0, 14_000);
@@ -1164,6 +1218,7 @@ async function generateProposalFromChatbox() {
 }
 
 function simulateChatboxProposal() {
+  // 模拟提案不调用 AI，只验证预览和人工确认流程。
   if (!pendingChatbox?.extraction) throw new Error("请先提取 Chatbox 内容。");
   const goalId = state.goals[0]?.id;
   if (!goalId) throw new Error("请先新建至少一条主线。");
@@ -1189,6 +1244,7 @@ function simulateChatboxProposal() {
 }
 
 function simulateAIProposal() {
+  // 模拟 AI 提案固定挂到首条主线，用于离线演示和回归测试。
   const goalId = state.goals[0]?.id;
   if (!goalId) throw new Error("请先新建至少一条主线。");
   const proposal = {
@@ -1211,6 +1267,7 @@ function simulateAIProposal() {
 }
 
 function simulateScheduleRecognition() {
+  // 模拟课表识别生成一条临时课程提案，不直接写入课表。
   const proposal = {
     summary: "这是不依赖视觉 API 的模拟课表识别结果。",
     operations: [{
@@ -1232,6 +1289,7 @@ function simulateScheduleRecognition() {
 }
 
 function resetCourseForm() {
+  // 新建课程默认落在当前时区星期和第一节。
   elements.scheduleCourseId.value = "";
   elements.scheduleDay.value = String(plannerWeekdayNumber());
   elements.scheduleTitle.value = "";
@@ -1245,6 +1303,7 @@ function resetCourseForm() {
 }
 
 function fillCourseForm(course) {
+  // 编辑课程时回填全部字段，保留原始 ID 以便覆盖同一条记录。
   elements.scheduleCourseId.value = course.id;
   elements.scheduleDay.value = String(course.dayOfWeek);
   elements.scheduleTitle.value = course.title ?? "";
@@ -1258,6 +1317,7 @@ function fillCourseForm(course) {
 }
 
 function renderScheduleList() {
+  // 按周一至周日、开始节次排序，便于人工检查冲突。
   const dayNames = { 1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日" };
   const groups = [];
   for (let day = 1; day <= 7; day += 1) {
@@ -1281,12 +1341,14 @@ function renderScheduleList() {
 }
 
 function openScheduleDialog() {
+  // 打开课表管理时重置表单并刷新当前课程列表。
   resetCourseForm();
   renderScheduleList();
   elements.scheduleDialog.showModal();
 }
 
 async function saveCourseRecord() {
+  // 先规范化和校验课程，再通过独立 schedule 仓库保存。
   const id = elements.scheduleCourseId.value || crypto.randomUUID();
   const periodStart = Number(elements.schedulePeriodStart.value || 1);
   const periodEnd = Number(elements.schedulePeriodEnd.value || periodStart);
@@ -1315,6 +1377,7 @@ async function saveCourseRecord() {
 }
 
 function editCourse(courseId) {
+  // 点击课表项时进入编辑模式，不存在则明确报错。
   const course = scheduleCourses.find((item) => item.id === courseId);
   if (!course) throw new Error("课程不存在。");
   fillCourseForm(course);
@@ -1322,6 +1385,7 @@ function editCourse(courseId) {
 }
 
 async function sourceTextContent(source) {
+  // 优先读取已提取文档，其次读取非图片附件，图片交给视觉模型处理。
   const document = documents.find((item) => item.path.startsWith(`inbox/${source.id}-`));
   if (document) return document.content;
   const attachment = attachments.find((item) => item.path === source.path);
@@ -1332,6 +1396,7 @@ async function sourceTextContent(source) {
 }
 
 function suggestSourceType(source, text) {
+  // 这是低成本启发式分类，最终仍允许用户在弹窗中修改。
   if (source.type === "png" || source.type === "jpg" || source.type === "jpeg") return "schedule";
   if (/课表|课程|星期|周[一二三四五六日天]|第\s*\d+\s*节/.test(text)) return "schedule";
   if (/研究|查询|搜索|了解|调研|网址|资料/.test(text)) return "research";
@@ -1340,6 +1405,7 @@ function suggestSourceType(source, text) {
 }
 
 async function openProcessSource(sourceId) {
+  // 处理资料时保存当前 source ID 和文本，防止弹窗关闭后上下文丢失。
   const source = state.sources.find((item) => item.id === sourceId);
   if (!source) throw new Error("收件箱资料不存在。");
   const text = await sourceTextContent(source);
@@ -1353,6 +1419,7 @@ async function openProcessSource(sourceId) {
 }
 
 function parseSimpleScheduleText(text) {
+  // 只处理“周一 1-2 课程名 地点”这类简单文本，复杂课表交给 AI。
   const dayMap = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 7, 天: 7 };
   const courses = [];
   for (const line of text.split(/\r?\n/)) {
@@ -1373,6 +1440,7 @@ function parseSimpleScheduleText(text) {
 }
 
 function simulatedProposalForSource(type, source, text, goalId) {
+  // 模拟处理只生成提案，不消耗 API，也不改变持久化数据。
   if (type === "schedule") {
     const parsed = parseSimpleScheduleText(text);
     const courses = parsed.length ? parsed : [{
@@ -1425,6 +1493,7 @@ function simulatedProposalForSource(type, source, text, goalId) {
 }
 
 async function processSource(simulate = false) {
+  // 处理方式由用户选择；研究类型转入 Tavily 流程，其余生成变更提案。
   if (!pendingSourceProcess) return;
   const source = state.sources.find((item) => item.id === pendingSourceProcess.sourceId);
   if (!source) throw new Error("收件箱资料不存在。");
@@ -1479,6 +1548,7 @@ async function processSource(simulate = false) {
 }
 
 async function scheduleProposalFromImageFile(file) {
+  // 图片识别结果先关闭课表弹窗，再进入统一的提案确认界面。
   const activeCredentials = requireCredentials();
   const proposal = await extractScheduleFromImage({
     credentials: activeCredentials,
@@ -1490,6 +1560,7 @@ async function scheduleProposalFromImageFile(file) {
 }
 
 async function checkDataHealth() {
+  // 健康检查读取原始数据，避免默认值掩盖真实结构问题。
   const raw = await loadRawDatasets(db);
   const reports = inspectStateHealth(raw, raw.schedule);
   dataHealthIssues = reports.filter((report) => !report.ok);
@@ -1502,6 +1573,7 @@ async function checkDataHealth() {
 }
 
 async function runValidationSimulation() {
+  // 模拟非法日期和倒置节次，验证写入层确实会拒绝。
   const invalidTask = {
     id: `INVALID-${crypto.randomUUID().slice(0, 6)}`,
     parentId: state.goals[0]?.id ?? "Q0",
@@ -1554,6 +1626,7 @@ async function runValidationSimulation() {
 }
 
 function renderGoalsList() {
+  // 主线列表支持改名、权重调整、排序和删除。
   elements.goalsList.innerHTML = state.goals.map((goal, index) => `
     <div class="goal-row">
       <input type="text" value="${escapeHtml(goal.title)}" data-goal-title="${escapeHtml(goal.id)}">
@@ -1569,6 +1642,7 @@ function renderGoalsList() {
 }
 
 function openGoalsDialog() {
+  // 新建主线默认使用 Q 前缀和权重 5，用户可覆盖。
   elements.goalNewTitle.value = "";
   elements.goalNewWeight.value = "5";
   elements.goalNewPrefix.value = "Q";
@@ -1577,6 +1651,7 @@ function openGoalsDialog() {
 }
 
 async function persistGoals(nextGoals, nextTasks = state.tasks, nextDecisions = state.decisions) {
+  // 三条主线相关数据集一起规范化并原子替换，避免删除后留下悬空引用。
   state = normalizeState({
     ...state,
     goals: nextGoals,
@@ -1590,6 +1665,7 @@ async function persistGoals(nextGoals, nextTasks = state.tasks, nextDecisions = 
 }
 
 async function addGoal() {
+  // 前缀由用户输入，完整 ID 自动取同前缀最大编号加一。
   const title = elements.goalNewTitle.value.trim();
   const weight = Number(elements.goalNewWeight.value);
   const prefix = elements.goalNewPrefix.value.trim() || "Q";
@@ -1615,6 +1691,7 @@ async function addGoal() {
 }
 
 async function saveGoal(goalId) {
+  // 修改名称和权重时按 ID 定位对应输入框。
   const titleInput = elements.goalsList.querySelector(`[data-goal-title="${CSS.escape(goalId)}"]`);
   const weightInput = elements.goalsList.querySelector(`[data-goal-weight="${CSS.escape(goalId)}"]`);
   const weight = Number(weightInput?.value);
@@ -1630,6 +1707,7 @@ async function saveGoal(goalId) {
 }
 
 async function moveGoal(goalId, direction) {
+  // 通过交换数组位置调整主线顺序，越界时静默忽略。
   const index = state.goals.findIndex((goal) => goal.id === goalId);
   const target = index + direction;
   if (index < 0 || target < 0 || target >= state.goals.length) return;
@@ -1639,17 +1717,19 @@ async function moveGoal(goalId, direction) {
 }
 
 function requestDeleteGoal(goalId) {
+  // 删除主线前必须处理其下任务和决策，不能让活动记录失去归属。
   const goal = state.goals.find((item) => item.id === goalId);
   if (!goal) throw new Error("主线不存在。");
   const tasks = state.tasks.filter((task) => task.parentId === goalId);
-  if (!tasks.length) {
+  const decisions = state.decisions.filter((decision) => decision.parentId === goalId);
+  if (!tasks.length && !decisions.length) {
     if (!window.confirm(`确定删除主线“${goal.title}”吗？`)) return;
     persistGoals(state.goals.filter((item) => item.id !== goalId)).catch(handleError);
     return;
   }
   pendingGoalDelete = goalId;
   const alternatives = state.goals.filter((item) => item.id !== goalId);
-  elements.deleteGoalMessage.textContent = `主线“${goal.title}”下有 ${tasks.length} 个任务。请选择转移任务或一并删除。`;
+  elements.deleteGoalMessage.textContent = `主线“${goal.title}”下有 ${tasks.length} 个任务、${decisions.length} 个决策。请选择转移或一并删除。`;
   elements.deleteGoalTransferTarget.innerHTML = alternatives
     .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)}</option>`)
     .join("");
@@ -1658,6 +1738,7 @@ function requestDeleteGoal(goalId) {
 }
 
 async function confirmDeleteGoal(mode) {
+  // transfer 将任务和决策转到另一条主线；cascade 一并删除。
   if (!pendingGoalDelete) return;
   const goalId = pendingGoalDelete;
   const targetId = elements.deleteGoalTransferTarget.value;
@@ -1679,6 +1760,7 @@ async function confirmDeleteGoal(mode) {
 }
 
 function bind() {
+  // 事件绑定只负责把事件路由到业务函数，业务错误统一交给 handleError。
   elements.briefButton.addEventListener("click", () => showBrief().catch(handleError));
   elements.generateBrief.addEventListener("click", () => generateSelectedBrief());
   elements.backupButton.addEventListener("click", () => backup().catch(handleError));
@@ -1803,6 +1885,7 @@ function bind() {
 }
 
 function handleError(error) {
+  // 错误提示进入界面前统一屏蔽常见密钥形态，防止日志和屏幕泄露。
   const message = String(error?.message || error || "发生未知错误")
     .replace(/sk-[A-Za-z0-9_-]+/g, "[已隐藏]")
     .replace(/tvly-[A-Za-z0-9_-]+/g, "[已隐藏]")
@@ -1813,6 +1896,7 @@ function handleError(error) {
 }
 
 async function init() {
+  // 初始化顺序：绑定 UI -> 打开数据库 -> 读取/校验数据 -> 刷新 AI 状态 -> 渲染。
   bind();
   db = await openDatabase();
   state = await loadState(db);
@@ -1829,11 +1913,13 @@ async function init() {
 }
 
 elements.dismissGlobalError.addEventListener("click", () => {
+  // 关闭错误横幅只隐藏提示，不改变当前数据状态。
   elements.globalErrorBanner.hidden = true;
 });
 window.addEventListener("error", (event) => handleError(event.error || event.message));
 window.addEventListener("unhandledrejection", (event) => handleError(event.reason));
 if ("serviceWorker" in navigator) {
+  // Service Worker 注册失败只影响离线能力，不阻塞应用使用。
   navigator.serviceWorker.register("./sw.js").catch(() => {
     toast("离线缓存未启用，不影响在线使用。");
   });

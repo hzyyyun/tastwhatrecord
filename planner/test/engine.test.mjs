@@ -125,6 +125,58 @@ test("parent replan marks the whole subtree", () => {
   assert.equal(q1.tasks[0].children[0].id, "C");
 });
 
+test("task tree keeps descending beyond one child level", () => {
+  const s = state([
+    {
+      id: "P",
+      parentId: "Q1",
+      title: "parent",
+      type: "milestone",
+      status: "todo"
+    },
+    {
+      id: "C",
+      parentId: "Q1",
+      parentTaskId: "P",
+      title: "child",
+      type: "action",
+      status: "todo"
+    },
+    {
+      id: "G",
+      parentId: "Q1",
+      parentTaskId: "C",
+      title: "grandchild",
+      type: "action",
+      status: "todo"
+    }
+  ]);
+  const q1 = taskTree(s).find((goal) => goal.id === "Q1");
+  assert.equal(q1.tasks[0].children[0].children[0].id, "G");
+});
+
+test("parent replan stops when legacy data contains a cycle", () => {
+  const s = state([
+    {
+      id: "A",
+      parentId: "Q1",
+      parentTaskId: "B",
+      title: "A",
+      type: "action",
+      status: "todo"
+    },
+    {
+      id: "B",
+      parentId: "Q1",
+      parentTaskId: "A",
+      title: "B",
+      type: "action",
+      status: "todo"
+    }
+  ]);
+  assert.deepEqual(markForReplan(s, "A"), ["A", "B"]);
+});
+
 test("child deadline after parent deadline is reported", () => {
   const s = state([
     {

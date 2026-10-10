@@ -1,3 +1,4 @@
+// 浏览器持久层：IndexedDB 保存数据集、设置、文档、附件和独立课表。
 import { normalizeState } from "../../src/schema.mjs";
 import {
   assertValidSchedule,
@@ -10,6 +11,7 @@ const DB_NAME = "student-planner-os";
 const DB_VERSION = 3;
 
 function requestResult(request) {
+  // 把 IndexedDB 的成功/失败事件转换为 Promise，方便业务层 await。
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -17,6 +19,7 @@ function requestResult(request) {
 }
 
 function transactionDone(transaction) {
+  // 只有事务 complete 才代表整批写入真正提交。
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
@@ -25,6 +28,7 @@ function transactionDone(transaction) {
 }
 
 export function openDatabase() {
+  // 升级阶段只创建缺失对象仓库，保留已有本地数据。
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
@@ -63,6 +67,7 @@ export async function setSetting(db, key, value) {
 }
 
 export async function loadState(db, seedIfNeeded = true) {
+  // 首次且无数据时载入 seed；之后始终从 IndexedDB 读取并规范化。
   const transaction = db.transaction("datasets", "readonly");
   const store = transaction.objectStore("datasets");
   const records = await Promise.all(DATASETS.map((name) => requestResult(store.get(name))));
@@ -85,6 +90,7 @@ export async function loadState(db, seedIfNeeded = true) {
 }
 
 export async function loadRawDatasets(db) {
+  // 健康检查和备份导出需要未经过默认值补齐的原始记录。
   const transaction = db.transaction(["datasets", "schedule"], "readonly");
   const datasetStore = transaction.objectStore("datasets");
   const scheduleStore = transaction.objectStore("schedule");
@@ -102,6 +108,7 @@ export async function loadRawDatasets(db) {
 }
 
 export async function loadSeedState() {
+  // seed 文件随静态站点发布，用于首次打开时建立可演示的初始状态。
   const state = {};
   for (const name of DATASETS) {
     const response = await fetch(new URL(`../seed/${name}.json`, import.meta.url), { cache: "no-store" });
@@ -118,6 +125,7 @@ export async function loadSeedSchedule() {
 }
 
 export async function saveDataset(db, name, value) {
+  // 单个数据集写入前必须通过 Zod，防止绕过 UI 的非法调用污染数据。
   if (!DATASETS.includes(name)) throw new Error(`未知数据集：${name}`);
   const validation = validateDataset(name, value);
   if (!validation.success) {
@@ -133,6 +141,7 @@ export async function saveDataset(db, name, value) {
 }
 
 export async function replaceState(db, state) {
+  // 全量替换在单个事务内完成，避免只更新部分数据集。
   const normalized = assertValidState(normalizeState(state));
   const transaction = db.transaction("datasets", "readwrite");
   const store = transaction.objectStore("datasets");
@@ -145,6 +154,7 @@ export async function replaceState(db, state) {
 }
 
 export async function clearLocalData(db) {
+  // 保留设置对象中的“已初始化”标记，清空后不会被 seed 再次覆盖。
   const transaction = db.transaction(["datasets", "documents", "attachments", "schedule"], "readwrite");
   transaction.objectStore("datasets").clear();
   transaction.objectStore("documents").clear();
@@ -155,6 +165,7 @@ export async function clearLocalData(db) {
 }
 
 export async function loadDocuments(db) {
+  // 文档只返回业务需要的 path/content，不暴露 IndexedDB 内部元数据。
   const transaction = db.transaction("documents", "readonly");
   const records = await requestResult(transaction.objectStore("documents").getAll());
   return records.map((record) => ({ path: record.path, content: record.content }));
@@ -174,6 +185,7 @@ export async function saveDocuments(db, documents) {
 }
 
 export async function loadAttachments(db) {
+  // 附件以 Blob 返回，便于预览、重新解析和生成备份。
   const transaction = db.transaction("attachments", "readonly");
   const records = await requestResult(transaction.objectStore("attachments").getAll());
   return records.map((record) => ({
@@ -202,11 +214,13 @@ export async function saveAttachments(db, attachments) {
 }
 
 export async function loadSchedule(db) {
+  // 课表使用独立对象仓库，避免课表错误阻塞任务树读取。
   const transaction = db.transaction("schedule", "readonly");
   return requestResult(transaction.objectStore("schedule").getAll());
 }
 
 export async function saveSchedule(db, schedule) {
+  // 先校验后清空再写入，保证课表不会出现半更新状态。
   const validated = assertValidSchedule(schedule);
   const transaction = db.transaction("schedule", "readwrite");
   const store = transaction.objectStore("schedule");

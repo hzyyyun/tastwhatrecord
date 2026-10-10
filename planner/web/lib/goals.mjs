@@ -1,3 +1,4 @@
+// 主线 ID 生成：支持任意前缀，并在同前缀下自动取最大编号加一。
 function nextForPrefix(goals, prefix) {
   const safePrefix = prefix.trim() || "Q";
   const escaped = safePrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -11,6 +12,7 @@ function nextForPrefix(goals, prefix) {
 }
 
 export function resolveGoalId(goals, input = "Q") {
+  // 完整 ID（例如 Q6）按输入使用；仅有前缀时自动分配下一个编号。
   const value = input.trim() || "Q";
   if (/^[A-Za-z0-9_-]+$/.test(value) && /\d+$/.test(value)) {
     if (goals.some((goal) => goal.id === value)) {
